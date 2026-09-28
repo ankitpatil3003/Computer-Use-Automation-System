@@ -1,6 +1,5 @@
 """Smoke test for the target app's states and fault injection (HTTP level, no browser)."""
 
-import threading
 import urllib.error
 import urllib.request
 from http.cookiejar import CookieJar
@@ -9,14 +8,6 @@ from urllib.parse import urlencode
 import pytest
 
 from mockbank import server
-
-
-@pytest.fixture(scope="module")
-def base():
-    srv = server.make_server(port=0)
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{srv.server_port}"
-    srv.shutdown()
 
 
 def client(base):
