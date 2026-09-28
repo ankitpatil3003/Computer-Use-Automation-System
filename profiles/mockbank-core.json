@@ -1,0 +1,47 @@
+{
+  "id": "mockbank-core@2",
+  "product": "mockbank-core",
+  "detectors": [
+    {
+      "code": "session_expired",
+      "kind": "recoverable",
+      "recover": "restart",
+      "when": {"text": "Your session has expired"},
+      "message": "App session expired; sign on again and restart the flow."
+    },
+    {
+      "code": "system_notice",
+      "kind": "recoverable",
+      "recover": "click",
+      "when": {"text": "SYSTEM NOTICE"},
+      "target": {"frame": ["main"], "strategies": [{"by": "role", "role": "button", "name": "Acknowledge"}],
+                 "description": "button \"Acknowledge\""},
+      "message": "Informational interstitial; acknowledge and continue."
+    },
+    {
+      "code": "server_error",
+      "kind": "recoverable",
+      "recover": "restart",
+      "when": {"text": "Internal Server Error"},
+      "message": "Transient application error; retry the flow from the start."
+    },
+    {
+      "code": "permission_denied",
+      "kind": "business",
+      "when": {"text": "E403 ACCESS DENIED"},
+      "message": "The service account is not permitted to view this record."
+    },
+    {
+      "code": "supervisor_override_required",
+      "kind": "human_required",
+      "when": {"text": "SUPERVISOR OVERRIDE REQUIRED"},
+      "message": "Record is flagged; a supervisor must authorize access."
+    },
+    {
+      "code": "sign_on_rejected",
+      "kind": "hard",
+      "when": {"text": "INVALID SIGN-ON"},
+      "message": "Service credentials were rejected; check the configured secrets."
+    }
+  ]
+}

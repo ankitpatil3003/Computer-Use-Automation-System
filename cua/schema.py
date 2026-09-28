@@ -196,12 +196,13 @@ class Profile(Strict):
 class Outcome(Strict):
     code: str
     message: str
+    evidence: list[str] = Field(default_factory=list)
 
 
 class Failure(Strict):
-    code: Literal["input_invalid", "locator_not_found", "locator_ambiguous", "checkpoint_failed",
-                  "unclassified_state", "app_error", "policy_violation", "recovery_exhausted",
-                  "extraction_failed", "aborted"]
+    code: Literal["input_invalid", "locator_not_found", "locator_ambiguous", "action_failed",
+                  "checkpoint_failed", "unclassified_state", "app_error", "policy_violation",
+                  "recovery_exhausted", "extraction_failed", "aborted"]
     step_id: str | None = None
     expected: str
     observed: str

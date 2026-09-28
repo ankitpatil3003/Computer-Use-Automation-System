@@ -1,0 +1,10 @@
+{
+  "allowed_hosts": ["127.0.0.1", "localhost"],
+  "denied_paths": ["^/__"],
+  "allowed_actions": ["goto", "click", "fill", "select", "press"],
+  "irreversible_patterns": [
+    "(?i)\\b(close|delete|remove|cancel)\\s+(account|member|loan)",
+    "(?i)\\b(transfer|withdraw|disburse|pay|post|approve|authorize|reverse|refund)\\b",
+    "(?i)\\bsubmit\\s+(payment|transfer|application)\\b"
+  ]
+}

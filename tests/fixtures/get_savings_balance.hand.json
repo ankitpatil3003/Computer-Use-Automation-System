@@ -1,0 +1,55 @@
+{
+  "schema_version": "1.0",
+  "id": "mockbank.member.get_savings_balance",
+  "version": "0.1.0",
+  "status": "draft",
+  "description": "Hand-written fixture used to test replay before any LLM discovery. Looks up a member and returns their share savings balance.",
+  "app": {"product": "mockbank-core", "versions": ">=2.4,<3", "surface": "web", "profile": "mockbank-core@2"},
+  "entry": "{{tenant.base_url}}/",
+  "inputs": {
+    "member_id": {"type": "string", "description": "5-digit member number", "pattern": "^\\d{5}$", "sensitivity": "pii_id"}
+  },
+  "outputs": {
+    "savings_balance": {
+      "type": "decimal", "description": "Current Share Savings balance in USD", "sensitivity": "financial",
+      "transform": "currency",
+      "source": {"frame": ["main"], "strategies": [{"by": "table_cell", "row": "Share Savings", "column": "Balance"}],
+                 "description": "cell Share Savings / Balance"}
+    },
+    "member_name": {
+      "type": "string", "description": "Member full name as shown on the record", "sensitivity": "pii",
+      "source": {"frame": ["main"], "strategies": [{"by": "table_cell", "row": "Name"}], "description": "cell Name / value"}
+    }
+  },
+  "steps": [
+    {"id": "sign_on_user_id", "action": "fill", "value": "{{secrets.MOCKBANK_USER}}", "intent": "Enter the service account user ID",
+     "target": {"frame": [], "strategies": [{"by": "text_anchor", "anchor": "User ID", "role": "textbox"},
+                                            {"by": "css", "selector": "input[name=\"u\"]"}], "description": "textbox \"User ID\""}},
+    {"id": "sign_on_password", "action": "fill", "value": "{{secrets.MOCKBANK_PASSWORD}}", "intent": "Enter the service account password",
+     "target": {"frame": [], "strategies": [{"by": "text_anchor", "anchor": "Password", "role": "textbox"},
+                                            {"by": "css", "selector": "input[name=\"p\"]"}], "description": "textbox \"Password\""}},
+    {"id": "sign_on_submit", "action": "click", "intent": "Sign on",
+     "target": {"frame": [], "strategies": [{"by": "role", "role": "button", "name": "Sign On"},
+                                            {"by": "css", "selector": "input[value=\"Sign On\"]"}], "description": "button \"Sign On\""},
+     "expect": {"frame": ["menu"], "text": "Member Inquiry"}},
+    {"id": "open_member_inquiry", "action": "click", "intent": "Open Member Inquiry from the menu",
+     "target": {"frame": ["menu"], "strategies": [{"by": "role", "role": "link", "name": "Member Inquiry"}],
+                "description": "link \"Member Inquiry\""},
+     "expect": {"frame": ["main"], "text": "Member #"}},
+    {"id": "enter_member_id", "action": "fill", "value": "{{inputs.member_id}}", "intent": "Type the member number",
+     "target": {"frame": ["main"], "strategies": [{"by": "text_anchor", "anchor": "Member #", "role": "textbox"},
+                                                  {"by": "css", "selector": "input[name=\"f1\"]"}], "description": "textbox \"Member #\""}},
+    {"id": "submit_search", "action": "click", "intent": "Search for the member",
+     "target": {"frame": ["main"], "strategies": [{"by": "role", "role": "button", "name": "Go"},
+                                                  {"by": "css", "selector": "input[value=\"Go\"]"}], "description": "button \"Go\""},
+     "expect": {"frame": ["main"], "text": "Member Detail"}}
+  ],
+  "success": [{"frame": ["main"], "text": "Member Detail"}],
+  "outcomes": [
+    {"code": "member_not_found", "kind": "business", "when": {"frame": ["main"], "text": "E404 NO MEMBER ON FILE"},
+     "message": "No member exists with that number."},
+    {"code": "invalid_member_number", "kind": "business", "when": {"frame": ["main"], "text": "E102 INVALID MEMBER NUMBER"},
+     "message": "The application rejected the member number as invalid."}
+  ],
+  "provenance": {"recorded_at": "2026-09-28T00:00:00Z", "recorded_by": "hand-written test fixture"}
+}

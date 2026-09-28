@@ -144,15 +144,13 @@ class Handler(BaseHTTPRequestHandler):
         sid = sid.value if sid else ""
         if path == "/logout":
             SESSIONS.pop(sid, None)
-            return self.redirect("/login")
-        if take("expire"):
-            SESSIONS.pop(sid, None)
+            return self.redirect("/login", [("Set-Cookie", "SID=; Path=/; Max-Age=0")])
         sess = SESSIONS.get(sid)
-        if sess and time.time() - sess["last"] > IDLE_TIMEOUT_S:
+        if sess and (take("expire") or time.time() - sess["last"] > IDLE_TIMEOUT_S):
             SESSIONS.pop(sid, None)
             sess = None
-        if sess is None:
-            return self.redirect("/login") if path == "/" else self.send(200, EXPIRED)
+        if sess is None:  # never signed on → sign-on page; had a session → "expired" page
+            return self.redirect("/login") if path == "/" and not sid else self.send(200, EXPIRED)
         sess["last"] = time.time()
 
         if path == "/":

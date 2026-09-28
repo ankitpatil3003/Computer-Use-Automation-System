@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Protocol
+from typing import Callable, Protocol
 
 from playwright.sync_api import Error as PWError, Frame, Locator as PWLocator, sync_playwright
 
@@ -27,6 +27,7 @@ class Surface(Protocol):
     url: str
 
     def goto(self, url: str) -> None: ...
+    def reset_session(self) -> None: ...
     def observe(self) -> str: ...
     def locator_for(self, ref: str) -> Locator: ...
     def cell_locator(self, frame: list[str], row: str, column: str | None) -> Locator: ...
@@ -135,11 +136,22 @@ def _frame_path(frame: Frame) -> list[str] | None:
 
 
 class PlaywrightSurface:
-    def __init__(self, headless: bool = True):
+    def __init__(self, headless: bool = True, allow_url: Callable[[str], bool] | None = None):
         self._pw = sync_playwright().start()
         self.browser = self._pw.chromium.launch(headless=headless)
         self.page = self.browser.new_page(viewport={"width": 1200, "height": 800})
         self._refs: dict[str, tuple[Frame, int]] = {}
+        self.blocked: list[str] = []
+        if allow_url:
+            # Enforced at the network layer, so a click that would navigate (any frame) off the
+            # allowlist is stopped before the request leaves the browser, not detected afterwards.
+            def guard(route):
+                if allow_url(route.request.url):
+                    route.continue_()
+                else:
+                    self.blocked.append(route.request.url)
+                    route.abort("blockedbyclient")
+            self.page.context.route("**/*", guard)
 
     def __enter__(self) -> PlaywrightSurface:
         return self
@@ -157,6 +169,10 @@ class PlaywrightSurface:
 
     def goto(self, url: str) -> None:
         self.page.goto(url, wait_until="domcontentloaded")
+
+    def reset_session(self) -> None:
+        """Drop the app session (cookies) so the next goto starts from a known state."""
+        self.page.context.clear_cookies()
 
     # --- perception (discovery) ---------------------------------------------------------------
 
@@ -226,7 +242,8 @@ class PlaywrightSurface:
     def _frame(self, path: list[str]) -> Frame:
         frame = self.page.main_frame
         for name in path:
-            frame = next((f for f in frame.child_frames if f.name == name), None)
+            # child_frames can still list frames detached by an earlier navigation; skip them
+            frame = next((f for f in frame.child_frames if f.name == name and not f.is_detached()), None)
             if frame is None:
                 raise LocatorError("locator_not_found", f"frame {'/'.join(path)!r} not present")
         return frame
