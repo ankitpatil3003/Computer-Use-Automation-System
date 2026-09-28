@@ -1,0 +1,23 @@
+[project]
+name = "cua"
+version = "0.1.0"
+description = "LLM-discovered UI flows recorded as typed capabilities and replayed deterministically."
+requires-python = ">=3.11"
+dependencies = [
+    "playwright>=1.45",
+    "pydantic>=2.6",
+    "openai>=1.40",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+cua = "cua.cli:main"
+
+[tool.setuptools]
+packages = ["cua", "mockbank"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

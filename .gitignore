@@ -216,3 +216,17 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Secrets
+.env
+*.key
+
+# Assignment brief (keep local only)
+*.pdf
+
+# Runtime output (only curated files go in /evidence)
+runs/
+artifacts/drafts/
+playwright-report/
+test-results/
+.pytest_cache/
