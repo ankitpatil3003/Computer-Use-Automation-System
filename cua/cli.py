@@ -142,6 +142,8 @@ def main(argv: list[str] | None = None) -> int:
     o.add_argument("--as", dest="as_", help="operator name (default: OS user)")
     o.add_argument("--runs", default="runs")
     o.set_defaults(fn=cmd_operator)
+    sub.add_parser("schema", help="print the capability artifact JSON Schema").set_defaults(
+        fn=lambda _: print(json.dumps(Capability.model_json_schema(), indent=2)) or 0)
     args = ap.parse_args(argv)
     return args.fn(args)
 
