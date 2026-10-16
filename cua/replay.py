@@ -6,7 +6,9 @@ the app profile's detectors:
     business        → stop, return the outcome to the caller (not an error)
     recoverable     → dismiss / restart within a bounded budget, logged in `recoveries`
     hard            → stop with a debuggable failure + evidence
-    human_required  → stop with needs_human (the handoff layer takes it from here)
+    human_required  → intervention request; with an operator wait configured, the run pauses on
+                      the same live session, a human takes the lease, and the run resumes after
+                      re-classifying the screen (see handoff.py)
 Anything unrecognised is a failure, never a guess.
 """
 
@@ -15,6 +17,7 @@ from __future__ import annotations
 import json
 import re
 import secrets
+import sys
 import time
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -23,11 +26,13 @@ from typing import Any, Mapping
 
 from playwright.sync_api import Error as PWError
 
+from cua.handoff import ControlError, Lease, write_request
 from cua.policy import Policy, PolicyViolation, Redactor
 from cua.schema import TEMPLATE_RE, Capability, Check, Detector, Failure, Outcome, Output, Profile, RunResult, Step
 from cua.surface import LocatorError, Surface
 
 MAX_RECOVERIES = 3
+MAX_HANDOFFS = 2  # a human who could not fix it twice will not on the third try
 SUCCESS_TIMEOUT_MS = 10_000
 POLL_S = 0.15
 
@@ -62,6 +67,10 @@ class _Restart(Exception):
     pass
 
 
+class _HumanCompleted(Exception):
+    pass
+
+
 def convert(raw: str, out: Output) -> Any:
     text = raw.strip()
     if out.transform == "currency":
@@ -85,7 +94,7 @@ def convert(raw: str, out: Output) -> Any:
 class Replayer:
     def __init__(self, cap: Capability, profile: Profile, policy: Policy, surface: Surface, *,
                  secrets: Mapping[str, str], tenant: Mapping[str, str], runs_dir: str | Path = "runs",
-                 confirm_irreversible: bool = False):
+                 confirm_irreversible: bool = False, handoff_wait_s: float = 0):
         self.cap, self.policy, self.surface = cap, policy, surface
         self.detectors: list[Detector] = [*cap.outcomes, *profile.detectors]  # specific before generic
         self.secrets, self.tenant = secrets, tenant
@@ -97,6 +106,8 @@ class Replayer:
         self.handoffs: list[dict[str, Any]] = []
         self.irreversible_done = False
         self.ctx: dict[str, Mapping[str, str]] = {}
+        self.handoff_wait_s = handoff_wait_s  # 0 = route the request and return needs_human
+        self.lease = Lease(self.dir / "control.json", self.dir.name)
 
     # --- entry point ---------------------------------------------------------------------------
 
@@ -107,12 +118,16 @@ class Replayer:
             self._bind(inputs)
             self.log("run_start", capability=self.cap.id, version=self.cap.version,
                      artifact_status=self.cap.status, inputs=dict(inputs))
+            self.surface.lease = self.lease
             self._start()
             while True:
                 try:
-                    for step in self.cap.steps:
-                        self._step(step)
-                    self._await(self.cap.success, SUCCESS_TIMEOUT_MS, None, "checkpoint_failed")
+                    try:
+                        for step in self.cap.steps:
+                            self._step(step)
+                    except _HumanCompleted:
+                        pass  # the operator finished by hand; still verify success and extract
+                    self._verify_success()
                     outputs = self._extract()
                     break
                 except _Restart:
@@ -127,6 +142,13 @@ class Replayer:
         self.log("run_end", result=persisted)
         (self.dir / "result.json").write_text(json.dumps(persisted, indent=2), encoding="utf-8")
         return result
+
+    def _verify_success(self) -> None:
+        while True:
+            try:
+                return self._await(self.cap.success, SUCCESS_TIMEOUT_MS, None, "checkpoint_failed")
+            except _HumanCompleted:
+                continue  # the operator says it is done: the success checks still decide
 
     # --- setup -----------------------------------------------------------------------------------
 
@@ -190,7 +212,9 @@ class Replayer:
         t0 = time.monotonic()
         self.log("step_start", step_id=step.id, action=step.action, intent=step.intent)
         self._settle(step)
-        self._guard(step)
+        if self._guard(step):
+            self.log("step_ok", step_id=step.id, by="human", ms=int((time.monotonic() - t0) * 1000))
+            return
         value = self._render(step.value) if step.value is not None else None
         try:
             idx = self.surface.perform(step.action, step.target, value, step.timeout_ms)
@@ -214,7 +238,8 @@ class Replayer:
             self._await([step.expect], step.timeout_ms, step, "unclassified_state")
         self.log("step_ok", step_id=step.id, ms=int((time.monotonic() - t0) * 1000))
 
-    def _guard(self, step: Step) -> None:
+    def _guard(self, step: Step) -> bool:
+        """Policy checks before acting. Returns True if a human performed the step instead."""
         try:
             self.policy.check_action(step.action)
             if step.action == "goto":
@@ -226,6 +251,17 @@ class Replayer:
             self._needs_human("irreversible_step", step,
                               f"step {step.id!r} is irreversible; it needs an approved capability and explicit "
                               f"confirmation (status={self.cap.status}, confirmed={self.confirm_irreversible})")
+            # Resumed: the operator was asked to perform (or skip) this step with their own hands.
+            # A release is not an approval: automation never clicks an irreversible control itself.
+            if step.expect and self.surface.wait_for(step.expect, 2000):
+                self.irreversible_done = True
+                return True
+            raise _Finish("failed", error=Failure(
+                code="checkpoint_failed", step_id=step.id,
+                expected=f"operator performs irreversible step {step.id!r}" + (f" ({_describe(step.expect)})" if step.expect else ""),
+                observed="control was released without the step's checkpoint holding; automation will not perform it",
+                evidence=self._evidence("irreversible_not_done")))
+        return False
 
     def _await(self, checks: list[Check], timeout_ms: int, step: Step | None, code: str) -> None:
         """Wait until all checks hold, classifying any known state that shows up meanwhile."""
@@ -254,6 +290,8 @@ class Replayer:
             raise _Finish("business_outcome", outcome=Outcome(code=det.code, message=det.message))
         if det.kind == "human_required":
             self._needs_human(det.code, step, det.message)
+            self._settle(step)  # resumed: re-classify the screen the human left us
+            return True
         if det.kind == "hard":
             raise _Finish("failed", error=Failure(code="app_error", step_id=step_id,
                                                   expected=step.intent if step else "success state",
@@ -281,7 +319,65 @@ class Replayer:
         raise _Restart()
 
     def _needs_human(self, code: str, step: Step | None, message: str) -> None:
-        raise _Finish("needs_human", outcome=Outcome(code=code, message=message, evidence=self._evidence(code)))
+        """Route an intervention request. Returns only if a human resumed the run on this session."""
+        evidence = self._evidence(code)
+        outcome = Outcome(code=code, message=message, evidence=evidence)
+        live = self.handoff_wait_s > 0 and len(self.handoffs) < MAX_HANDOFFS
+        write_request(self.dir, live=live, kind="replay", capability=self.cap.id, version=self.cap.version,
+                      code=code, reason=message, step_id=step.id if step else None,
+                      step_intent=step.intent if step else None, url=self.redact(self.surface.url),
+                      evidence=evidence, screen=self._observed())
+        asked = self.lease.transition("AWAITING_HUMAN", "automation", code)["seq"]
+        self.log("handoff_requested", code=code, step_id=step.id if step else None, live=live)
+        if not live:
+            why = "handoff budget exhausted" if self.handoff_wait_s > 0 else "no operator wait configured"
+            self.lease.transition("ABORTED", "automation", why)
+            raise _Finish("needs_human", outcome=outcome)
+        print(f"[cua] run {self.dir.name} needs a human ({code}): {message}\n"
+              f"[cua]   take over the open browser:  cua operator claim {self.dir.name}", file=sys.stderr)
+        record: dict[str, Any] = {"code": code, "step_id": step.id if step else None,
+                                  "requested_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+        self.handoffs.append(record)
+        state, lease = self._wait_for_operator()
+        record["actions"] = self.redact.scrub(self.surface.human_events)
+        self.surface.human_events.clear()
+        last = lease["history"][-1]
+        # the lease history is the record of who held the session (a claim+release can fall
+        # between two polls), so read the claim from it rather than from what the loop saw
+        claim = next((h for h in lease["history"][asked:] if h["to"] == "HUMAN"), None)
+        if claim:
+            record["claimed_by"], record["claimed_at"] = claim["by"], claim["at"]
+        record.update(resolution=state, resolved_by=last["by"], resolved_at=last["at"])
+        if last.get("note"):
+            record["note"] = self.redact(last["note"])
+        self.log("handoff_resolved", **record)
+        if state == "AUTOMATION":
+            return
+        if state == "COMPLETED_BY_HUMAN":
+            raise _HumanCompleted()
+        if last["by"] == "automation":  # nobody claimed it in time
+            raise _Finish("needs_human", outcome=outcome)
+        raise _Finish("failed", error=Failure(code="aborted", step_id=record["step_id"],
+                                              expected=f"operator resolves {code}",
+                                              observed=f"aborted by {last['by']}", evidence=evidence))
+
+    def _wait_for_operator(self) -> tuple[str, dict[str, Any]]:
+        """Hold the live session until the lease leaves human hands. No timeout once claimed:
+        automation never yanks the session from a human mid-task."""
+        deadline, claim_logged = time.monotonic() + self.handoff_wait_s, False
+        while True:
+            self.surface.idle(250)  # keeps the browser serviced: human-action capture runs here
+            lease = self.lease.read()
+            if lease["state"] == "HUMAN" and not claim_logged:
+                claim_logged = True
+                self.log("handoff_claimed", by=lease["holder"])
+            if lease["state"] in ("AUTOMATION", "COMPLETED_BY_HUMAN", "ABORTED"):
+                return lease["state"], lease
+            if lease["state"] == "AWAITING_HUMAN" and time.monotonic() > deadline:
+                try:
+                    self.lease.transition("ABORTED", "automation", f"unclaimed after {self.handoff_wait_s:g}s")
+                except ControlError:
+                    pass  # claimed in the meantime; keep waiting
 
     def _fail_action(self, step: Step | None, e: Exception) -> None:
         code = e.code if isinstance(e, LocatorError) else "action_failed"

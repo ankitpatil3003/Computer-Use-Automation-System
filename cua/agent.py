@@ -15,6 +15,7 @@ from typing import Any, Mapping
 from openai import APIError
 from playwright.sync_api import Error as PWError
 
+from cua.handoff import Lease, write_request
 from cua.policy import Policy, PolicyViolation, Redactor
 from cua.recorder import Recorder, frame_path
 from cua.replay import Replayer, RunLog, convert, new_run_dir
@@ -93,6 +94,7 @@ class Discovery:
         for name, value in secrets.items():
             self.redact.add(value, "secret", name)
         self.log = RunLog(self.dir, self.redact)
+        self.lease = Lease(self.dir / "control.json", self.dir.name)
         self.recorder = Recorder(surface, profile, self.inputs)
         self.usage = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0}
         self._last_call = 0.0
@@ -112,6 +114,7 @@ class Discovery:
         unchanged = 0
         try:
             self.policy.check_url(self.start_url)
+            self.surface.lease = self.lease
             self.surface.reset_session()
             self.surface.goto(self.start_url)
             obs = self.surface.observe()
@@ -279,11 +282,15 @@ class Discovery:
             self.surface.screenshot(shot)
         except PWError:
             pass
-        request = {"kind": "discovery", "goal": self.redact(self.goal), "turn": turn, "reason": reason,
-                   "url": self.surface.url, "screenshot": shot.name, "screen": self.redact(self.surface.observe())}
-        (self.dir / "intervention.json").write_text(json.dumps(request, indent=2), encoding="utf-8")
+        # ponytail: discovery escalation routes the request but does not hold the session for takeover;
+        # live handoff is on the replay path. Resuming an LLM loop after human steps is the next build.
+        path = write_request(self.dir, live=False, kind="discovery", goal=self.redact(self.goal), turn=turn,
+                             reason=reason, url=self.redact(self.surface.url), screenshot=shot.name,
+                             screen=self.redact(self.surface.observe()))
+        self.lease.transition("AWAITING_HUMAN", "automation", reason)
+        self.lease.transition("ABORTED", "automation", "discovery does not hold sessions for takeover")
         self.log("escalation", reason=reason, turn=turn)
-        raise _Done("needs_human", reason=reason, intervention=str(self.dir / "intervention.json"))
+        raise _Done("needs_human", reason=reason, intervention=str(path))
 
 
 def _assistant(msg: Any) -> dict[str, Any]:

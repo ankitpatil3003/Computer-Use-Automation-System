@@ -14,6 +14,7 @@ from typing import Callable, Protocol
 
 from playwright.sync_api import Error as PWError, Frame, Locator as PWLocator, sync_playwright
 
+from cua.handoff import ControlError, Lease
 from cua.schema import Check, CssStrategy, Locator, RoleStrategy, Strategy, TableCellStrategy, TextAnchorStrategy
 
 
@@ -25,6 +26,10 @@ class LocatorError(Exception):
 
 class Surface(Protocol):
     url: str
+    lease: Lease | None  # who may act; perform() refuses unless it says AUTOMATION
+    human_events: list[dict]  # actions captured while a human holds the lease
+
+    def idle(self, ms: int) -> None: ...
 
     def goto(self, url: str) -> None: ...
     def reset_session(self) -> None: ...
@@ -112,6 +117,27 @@ _DESCRIBE_JS = "(el) => {" + _ROLE_NAME_JS + """
   return {role: roleOf(el), name: nameOf(el), anchor, css};
 }"""
 
+# Installed in every frame of every document. Reports what a human operator does to the live
+# session: which control (role/name, or its row label), never markup. Password values never
+# leave the page; everything else is redacted by the run's redactor before it is persisted.
+_CAPTURE_JS = "(() => { if (window.__cuaCapture) return; window.__cuaCapture = true;" + _ROLE_NAME_JS + """
+  const label = el => {
+    const tr = el.closest('tr');
+    if (tr) for (const c of tr.cells) { if (!c.contains(el) && c.innerText.trim()) return c.innerText.trim(); }
+    return '';
+  };
+  const post = (kind, target) => {
+    const el = target.closest && target.closest('a,button,input,select,textarea');
+    const role = el && roleOf(el);
+    if (!role || !window.__cuaHuman || (kind === 'click' && !['link', 'button', 'checkbox', 'radio'].includes(role))) return;
+    const ev = {kind, role, name: nameOf(el) || label(el)};
+    if (kind === 'change') ev.value = (el.type || '').toLowerCase() === 'password' ? '[SECRET]' : el.value;
+    window.__cuaHuman(ev);
+  };
+  document.addEventListener('click', e => post('click', e.target), true);
+  document.addEventListener('change', e => post('change', e.target), true);
+})()"""
+
 _CELL = "*[self::td or self::th]"
 
 
@@ -142,6 +168,10 @@ class PlaywrightSurface:
         self.page = self.browser.new_page(viewport={"width": 1200, "height": 800})
         self._refs: dict[str, tuple[Frame, int]] = {}
         self.blocked: list[str] = []
+        self.lease: Lease | None = None
+        self.human_events: list[dict] = []
+        self.page.context.expose_binding("__cuaHuman", self._on_human)
+        self.page.context.add_init_script(_CAPTURE_JS)
         if allow_url:
             # Enforced at the network layer, so a click that would navigate (any frame) off the
             # allowlist is stopped before the request leaves the browser, not detected afterwards.
@@ -168,7 +198,22 @@ class PlaywrightSurface:
         return self.page.url
 
     def goto(self, url: str) -> None:
+        self._require_control()
         self.page.goto(url, wait_until="domcontentloaded")
+
+    def _require_control(self) -> None:
+        if self.lease is not None and (state := self.lease.state) != "AUTOMATION":
+            raise ControlError(f"automation does not hold the session (lease state {state})")
+
+    def _on_human(self, source, ev: dict) -> None:
+        # Automation's own clicks fire the same listener; only the lease says whose hands they were.
+        if self.lease is not None and self.lease.state == "HUMAN":
+            path = _frame_path(source["frame"])
+            self.human_events.append({"t": time.strftime("%H:%M:%S"), "frame": "/".join(path) if path else "top", **ev})
+
+    def idle(self, ms: int) -> None:
+        """Wait while still servicing the browser (human-action callbacks run during this)."""
+        self.page.wait_for_timeout(ms)
 
     def reset_session(self) -> None:
         """Drop the app session (cookies) so the next goto starts from a known state."""
@@ -291,6 +336,7 @@ class PlaywrightSurface:
 
     def perform(self, action: str, target: Locator | None, value: str | None, timeout_ms: int) -> int:
         """Execute one action. Returns the winning strategy index (0 for goto)."""
+        self._require_control()
         if action == "goto":
             self.goto(value)
             return 0

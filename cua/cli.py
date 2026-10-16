@@ -1,13 +1,16 @@
-"""Command line: `cua discover` (LLM, dev time) and `cua replay` (deterministic, production path)."""
+"""Command line: `cua discover` (LLM, dev time), `cua replay` (deterministic, production path),
+and `cua operator` (the human side of a handoff)."""
 
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
 import os
 import sys
 from pathlib import Path
 
+from cua.handoff import ControlError, Lease
 from cua.policy import Policy
 from cua.replay import Replayer
 from cua.schema import Capability, Profile
@@ -36,10 +39,13 @@ def cmd_replay(args: argparse.Namespace) -> int:
     cap = Capability.load(args.capability)
     policy = Policy.load(args.policy)
     inputs = dict(kv.split("=", 1) for kv in args.input)
+    if args.handoff_wait and not args.headed:
+        sys.exit("--handoff-wait needs --headed: the operator works in the visible browser window")
     with PlaywrightSurface(headless=not args.headed, allow_url=policy.allows_url) as surface:
         result = Replayer(cap, load_profile(cap.app.profile), policy, surface, secrets=os.environ,
                           tenant={"base_url": args.base_url.rstrip("/")}, runs_dir=args.runs,
-                          confirm_irreversible=args.confirm_irreversible).run(inputs)
+                          confirm_irreversible=args.confirm_irreversible,
+                          handoff_wait_s=args.handoff_wait).run(inputs)
     # stdout is the caller channel: outputs are returned in full here; persisted copies are redacted.
     print(json.dumps(result.model_dump(exclude_none=True), indent=2))
     return EXIT[result.status]
@@ -72,6 +78,35 @@ def cmd_discover(args: argparse.Namespace) -> int:
     return EXIT[summary["status"]]
 
 
+def cmd_operator(args: argparse.Namespace) -> int:
+    if args.op == "list":
+        for path in sorted(Path(args.runs).glob("*/control.json")):
+            lease = json.loads(path.read_text(encoding="utf-8"))
+            if lease["state"] in ("AWAITING_HUMAN", "HUMAN"):
+                req = path.with_name("intervention.json")
+                reason = json.loads(req.read_text(encoding="utf-8")).get("reason", "") if req.exists() else ""
+                print(f"{lease['run_id']}  {lease['state']:<15} {lease['holder']:<20} {reason}")
+        return 0
+    if not args.run_id:
+        sys.exit(f"operator {args.op} needs a run id (see: cua operator list)")
+    me = f"human:{args.as_ or getpass.getuser()}"
+    to = {"claim": "HUMAN", "abort": "ABORTED",
+          "release": "COMPLETED_BY_HUMAN" if args.completed else "AUTOMATION"}[args.op]
+    try:
+        lease = Lease.for_run(args.runs, args.run_id).transition(to, me, args.note)
+    except ControlError as e:
+        sys.exit(f"refused: {e}")
+    print(f"{args.run_id}: {lease['state']} (held by {lease['holder']})")
+    if to == "HUMAN":
+        req = json.loads((Path(args.runs) / args.run_id / "intervention.json").read_text(encoding="utf-8"))
+        print(f"why: {req['reason']}  (step {req.get('step_id')})\n"
+              f"You now control the open browser window; automation is paused. When done:\n"
+              f"  cua operator release {args.run_id}              # hand back; automation re-checks the screen\n"
+              f"  cua operator release {args.run_id} --completed  # you finished the task by hand\n"
+              f"  cua operator abort {args.run_id}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     load_dotenv()
     ap = argparse.ArgumentParser(prog="cua")
@@ -96,7 +131,17 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--runs", default="runs")
     r.add_argument("--headed", action="store_true")
     r.add_argument("--confirm-irreversible", action="store_true")
+    r.add_argument("--handoff-wait", type=float, default=0, metavar="SECONDS",
+                   help="on needs-human, hold the live session this long for an operator to claim it")
     r.set_defaults(fn=cmd_replay)
+    o = sub.add_parser("operator", help="human side of a handoff: list | claim | release | abort")
+    o.add_argument("op", choices=["list", "claim", "release", "abort"])
+    o.add_argument("run_id", nargs="?")
+    o.add_argument("--completed", action="store_true", help="release: the task was finished by hand")
+    o.add_argument("--note", default="", help="free text recorded in the lease history (redacted in run logs)")
+    o.add_argument("--as", dest="as_", help="operator name (default: OS user)")
+    o.add_argument("--runs", default="runs")
+    o.set_defaults(fn=cmd_operator)
     args = ap.parse_args(argv)
     return args.fn(args)
 
