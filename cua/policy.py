@@ -70,6 +70,7 @@ _PATTERNS: list[tuple[re.Pattern, Any]] = [
     (re.compile(r"\b[A-Z]{1,2}-\d{5,}-\d{2}\b"), lambda m: "****" + m.group()[-4:]),        # account no.
     (re.compile(r"\b\d{9,17}\b"), lambda m: "****" + m.group()[-4:]),                       # long digit runs
     (re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+"), "[EMAIL]"),
+    (re.compile(r"\(?-?\$[\d,]+\.\d{2}\)?"), "[AMOUNT]"),                               # money
 ]
 
 
@@ -80,8 +81,12 @@ class Redactor:
     appear; well-known PII shapes are masked by pattern. Over-redaction is the accepted failure mode.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, pii_labels: list[str] | tuple[str, ...] = ()) -> None:
         self._values: dict[str, str] = {}
+        # Legacy screens are label | value rows; the app profile names the labels that carry PII,
+        # so values are masked without knowing them in advance (e.g. a member's name on screen).
+        self._labels = re.compile(r"(?m)(^|\| )(" + "|".join(map(re.escape, pii_labels)) + r") \| [^|\n]+") \
+            if pii_labels else None
 
     def add(self, value: Any, sensitivity: str, label: str) -> None:
         value = str(value) if value is not None else ""
@@ -95,6 +100,8 @@ class Redactor:
         }[sensitivity]
 
     def __call__(self, text: str) -> str:
+        if self._labels:
+            text = self._labels.sub(lambda m: f"{m[1]}{m[2]} | [PII:{m[2]}] ", text)
         for pattern, repl in _PATTERNS:
             text = pattern.sub(repl, text)
         for raw in sorted(self._values, key=len, reverse=True):

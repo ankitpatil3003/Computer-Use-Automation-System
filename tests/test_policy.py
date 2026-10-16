@@ -33,3 +33,10 @@ def test_redaction():
         assert raw not in out
     assert "***45" in out and "[SECRET]" in out
     assert r.scrub({"k": ["hunter22"]}) == {"k": ["[SECRET]"]}
+
+
+def test_profile_labelled_fields_and_amounts_are_masked_without_knowing_the_values():
+    screen = "Name | Casey M. Lee |\nSSN | ***-**-3366 |\nShare Savings | S-0013579-01 | ($602.19) |\nNamed | ok |"
+    out = Redactor(["Name", "SSN"])(screen)
+    assert out.splitlines() == ["Name | [PII:Name] |", "SSN | [PII:SSN] |",
+                                "Share Savings | ****9-01 | [AMOUNT] |", "Named | ok |"]

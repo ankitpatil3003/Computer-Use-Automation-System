@@ -1,0 +1,251 @@
+{
+  "schema_version": "1.0",
+  "id": "mockbank_core.get_savings_balance",
+  "version": "1.1.0",
+  "status": "approved",
+  "description": "Looks up a member and returns their savings balance.",
+  "app": {
+    "product": "mockbank-core",
+    "versions": "2.x",
+    "surface": "web",
+    "profile": "mockbank-core@2"
+  },
+  "entry": "{{tenant.base_url}}/",
+  "inputs": {
+    "member_id": {
+      "type": "string",
+      "description": "5-digit member number",
+      "pattern": "^\\d{5}$",
+      "sensitivity": "pii_id"
+    }
+  },
+  "outputs": {
+    "savings_balance": {
+      "type": "decimal",
+      "description": "The savings balance of the member.",
+      "sensitivity": "financial",
+      "source": {
+        "frame": [
+          "main"
+        ],
+        "strategies": [
+          {
+            "by": "table_cell",
+            "row": "Share Savings",
+            "column": "Balance"
+          },
+          {
+            "by": "css",
+            "selector": "body > font:nth-of-type(1) > table:nth-of-type(3) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(3)"
+          }
+        ],
+        "description": "cell Share Savings / Balance"
+      },
+      "transform": "currency"
+    }
+  },
+  "steps": [
+    {
+      "id": "fill_in_the_user_id",
+      "action": "fill",
+      "target": {
+        "frame": [],
+        "strategies": [
+          {
+            "by": "text_anchor",
+            "anchor": "User ID",
+            "role": "textbox"
+          },
+          {
+            "by": "css",
+            "selector": "input[name=\"u\"]"
+          }
+        ],
+        "description": "textbox \"User ID\""
+      },
+      "value": "{{secrets.MOCKBANK_USER}}",
+      "risk": "safe",
+      "timeout_ms": 10000,
+      "intent": "Fill in the user ID"
+    },
+    {
+      "id": "fill_in_the_password",
+      "action": "fill",
+      "target": {
+        "frame": [],
+        "strategies": [
+          {
+            "by": "text_anchor",
+            "anchor": "Password",
+            "role": "textbox"
+          },
+          {
+            "by": "css",
+            "selector": "input[name=\"p\"]"
+          }
+        ],
+        "description": "textbox \"Password\""
+      },
+      "value": "{{secrets.MOCKBANK_PASSWORD}}",
+      "risk": "safe",
+      "timeout_ms": 10000,
+      "intent": "Fill in the password"
+    },
+    {
+      "id": "click_the_sign_on_button_to_log_in",
+      "action": "click",
+      "target": {
+        "frame": [],
+        "strategies": [
+          {
+            "by": "role",
+            "role": "button",
+            "name": "Sign On"
+          },
+          {
+            "by": "css",
+            "selector": "input[value=\"Sign On\"]"
+          }
+        ],
+        "description": "button \"Sign On\""
+      },
+      "risk": "safe",
+      "expect": {
+        "frame": [
+          "main"
+        ],
+        "text": "Welcome"
+      },
+      "timeout_ms": 10000,
+      "intent": "Click the Sign On button to log in"
+    },
+    {
+      "id": "navigate_to_the_member_inquiry_screen_to",
+      "action": "click",
+      "target": {
+        "frame": [
+          "menu"
+        ],
+        "strategies": [
+          {
+            "by": "role",
+            "role": "link",
+            "name": "Member Inquiry"
+          },
+          {
+            "by": "css",
+            "selector": "body > font:nth-of-type(1) > a:nth-of-type(1)"
+          }
+        ],
+        "description": "link \"Member Inquiry\""
+      },
+      "risk": "safe",
+      "expect": {
+        "frame": [
+          "main"
+        ],
+        "text": "Member Inquiry"
+      },
+      "timeout_ms": 10000,
+      "intent": "Navigate to the Member Inquiry screen to look up a member."
+    },
+    {
+      "id": "fill_in_the_member_id_to_search_for_the",
+      "action": "fill",
+      "target": {
+        "frame": [
+          "main"
+        ],
+        "strategies": [
+          {
+            "by": "text_anchor",
+            "anchor": "Member #",
+            "role": "textbox"
+          },
+          {
+            "by": "css",
+            "selector": "input[name=\"f1\"]"
+          }
+        ],
+        "description": "textbox \"Member #\""
+      },
+      "value": "{{inputs.member_id}}",
+      "risk": "safe",
+      "timeout_ms": 10000,
+      "intent": "Fill in the member ID to search for the member."
+    },
+    {
+      "id": "click_the_go_button_to_search_for_the_me",
+      "action": "click",
+      "target": {
+        "frame": [
+          "main"
+        ],
+        "strategies": [
+          {
+            "by": "role",
+            "role": "button",
+            "name": "Go"
+          },
+          {
+            "by": "text_anchor",
+            "anchor": "Member #",
+            "role": "button"
+          },
+          {
+            "by": "css",
+            "selector": "input[value=\"Go\"]"
+          }
+        ],
+        "description": "button \"Go\""
+      },
+      "risk": "safe",
+      "expect": {
+        "frame": [
+          "main"
+        ],
+        "text": "Member Detail"
+      },
+      "timeout_ms": 10000,
+      "intent": "Click the Go button to search for the member."
+    }
+  ],
+  "success": [
+    {
+      "frame": [
+        "main"
+      ],
+      "text": "Member Detail"
+    }
+  ],
+  "outcomes": [
+    {
+      "code": "member_not_found",
+      "kind": "business",
+      "when": {
+        "frame": [
+          "main"
+        ],
+        "text": "E404 NO MEMBER ON FILE"
+      },
+      "message": "No member exists with that number."
+    },
+    {
+      "code": "invalid_member_number",
+      "kind": "business",
+      "when": {
+        "frame": [
+          "main"
+        ],
+        "text": "E102 INVALID MEMBER NUMBER"
+      },
+      "message": "The application rejected the member number as invalid."
+    }
+  ],
+  "provenance": {
+    "recorded_at": "2026-10-16T16:32:44+00:00",
+    "recorded_by": "discovery:gemini-2.5-flash",
+    "run_id": "20261016-123103-discover-c304b6",
+    "goal": "Look up the member and read their savings balance"
+  }
+}

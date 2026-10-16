@@ -1,0 +1,9 @@
+--- frame: menu
+[e0 link "Member Inquiry"] | [e1 link "Transfers"] | [e2 link "Sign Off"]
+MockBank Core v2.4.1
+--- frame: main
+SUPERVISOR OVERRIDE REQUIRED |
+Member record is flagged. A supervisor must authorize access.
+Override Code | [e3 textbox "" password] |
+[e4 button "Authorize"]
+MockBank Core v2.4.1

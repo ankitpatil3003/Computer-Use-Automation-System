@@ -1,0 +1,15 @@
+{"t": "2026-10-16T16:33:36.712+00:00", "event": "run_start", "capability": "mockbank_core.get_savings_balance", "version": "1.1.0", "artifact_status": "approved", "inputs": {"member_id": "***45"}}
+{"t": "2026-10-16T16:33:36.730+00:00", "event": "step_start", "step_id": "fill_in_the_user_id", "action": "fill", "intent": "Fill in the user ID"}
+{"t": "2026-10-16T16:33:36.764+00:00", "event": "step_ok", "step_id": "fill_in_the_user_id", "ms": 32}
+{"t": "2026-10-16T16:33:36.764+00:00", "event": "step_start", "step_id": "fill_in_the_password", "action": "fill", "intent": "Fill in the password"}
+{"t": "2026-10-16T16:33:36.775+00:00", "event": "step_ok", "step_id": "fill_in_the_password", "ms": 14}
+{"t": "2026-10-16T16:33:36.775+00:00", "event": "step_start", "step_id": "click_the_sign_on_button_to_log_in", "action": "click", "intent": "Click the Sign On button to log in"}
+{"t": "2026-10-16T16:33:37.007+00:00", "event": "step_ok", "step_id": "click_the_sign_on_button_to_log_in", "ms": 219}
+{"t": "2026-10-16T16:33:37.009+00:00", "event": "step_start", "step_id": "navigate_to_the_member_inquiry_screen_to", "action": "click", "intent": "Navigate to the Member Inquiry screen to look up a member."}
+{"t": "2026-10-16T16:33:37.250+00:00", "event": "step_ok", "step_id": "navigate_to_the_member_inquiry_screen_to", "ms": 233}
+{"t": "2026-10-16T16:33:37.250+00:00", "event": "step_start", "step_id": "fill_in_the_member_id_to_search_for_the", "action": "fill", "intent": "Fill in the member ID to search for the member."}
+{"t": "2026-10-16T16:33:37.279+00:00", "event": "step_ok", "step_id": "fill_in_the_member_id_to_search_for_the", "ms": 30}
+{"t": "2026-10-16T16:33:37.280+00:00", "event": "step_start", "step_id": "click_the_go_button_to_search_for_the_me", "action": "click", "intent": "Click the Go button to search for the member."}
+{"t": "2026-10-16T16:33:37.499+00:00", "event": "step_ok", "step_id": "click_the_go_button_to_search_for_the_me", "ms": 219}
+{"t": "2026-10-16T16:33:37.508+00:00", "event": "extracted", "outputs": {"savings_balance": "[FIN:savings_balance]"}}
+{"t": "2026-10-16T16:33:37.508+00:00", "event": "run_end", "result": {"run_id": "20261016-123336-replay-b21a3c", "capability": "mockbank_core.get_savings_balance", "version": "1.1.0", "status": "success", "outputs": {"savings_balance": "[FIN:savings_balance]"}, "recoveries": [], "handoffs": [], "evidence_dir": "C:\\Users\\ankit\\.claude\\jobs\\3d497cd0\\tmp\\ev\\20261016-123336-replay-b21a3c", "duration_ms": 796}}

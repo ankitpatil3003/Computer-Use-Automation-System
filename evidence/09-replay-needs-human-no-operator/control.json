@@ -1,0 +1,23 @@
+{
+  "run_id": "20261016-123403-replay-dcd566",
+  "state": "ABORTED",
+  "holder": "automation",
+  "seq": 2,
+  "updated_at": "2026-10-16T16:34:03+00:00",
+  "history": [
+    {
+      "from": "AUTOMATION",
+      "to": "AWAITING_HUMAN",
+      "by": "automation",
+      "at": "2026-10-16T16:34:03+00:00",
+      "note": "supervisor_override_required"
+    },
+    {
+      "from": "AWAITING_HUMAN",
+      "to": "ABORTED",
+      "by": "automation",
+      "at": "2026-10-16T16:34:03+00:00",
+      "note": "no operator wait configured"
+    }
+  ]
+}

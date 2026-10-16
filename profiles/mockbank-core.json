@@ -1,6 +1,7 @@
 {
   "id": "mockbank-core@2",
   "product": "mockbank-core",
+  "pii_labels": ["Name", "SSN"],
   "detectors": [
     {
       "code": "session_expired",

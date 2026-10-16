@@ -1,8 +1,8 @@
 {
   "schema_version": "1.0",
   "id": "mockbank_core.get_savings_balance",
-  "version": "1.0.0",
-  "status": "draft",
+  "version": "1.1.0",
+  "status": "approved",
   "description": "Looks up a member and returns their savings balance.",
   "app": {
     "product": "mockbank-core",
@@ -14,7 +14,7 @@
   "inputs": {
     "member_id": {
       "type": "string",
-      "description": "member_id",
+      "description": "5-digit member number",
       "pattern": "^\\d{5}$",
       "sensitivity": "pii_id"
     }
@@ -22,7 +22,7 @@
   "outputs": {
     "savings_balance": {
       "type": "decimal",
-      "description": "The savings balance for the member.",
+      "description": "The savings balance of the member.",
       "sensitivity": "financial",
       "source": {
         "frame": [
@@ -218,11 +218,34 @@
       "text": "Member Detail"
     }
   ],
-  "outcomes": [],
+  "outcomes": [
+    {
+      "code": "member_not_found",
+      "kind": "business",
+      "when": {
+        "frame": [
+          "main"
+        ],
+        "text": "E404 NO MEMBER ON FILE"
+      },
+      "message": "No member exists with that number."
+    },
+    {
+      "code": "invalid_member_number",
+      "kind": "business",
+      "when": {
+        "frame": [
+          "main"
+        ],
+        "text": "E102 INVALID MEMBER NUMBER"
+      },
+      "message": "The application rejected the member number as invalid."
+    }
+  ],
   "provenance": {
-    "recorded_at": "2026-10-16T16:11:58+00:00",
+    "recorded_at": "2026-10-16T16:32:44+00:00",
     "recorded_by": "discovery:gemini-2.5-flash",
-    "run_id": "20261016-121017-discover-b66cac",
+    "run_id": "20261016-123103-discover-c304b6",
     "goal": "Look up the member and read their savings balance"
   }
 }

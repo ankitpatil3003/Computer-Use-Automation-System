@@ -98,7 +98,9 @@ def test_discovery_records_a_replayable_capability(surface, base, tmp_path):
     for click in [s for s in cap.steps if s.action == "click"]:
         assert click.expect is not None and click.expect.text  # every navigating click has a checkpoint
     assert cap.steps[-1].expect.text == "Member Detail"
-    assert server.PASSWORD not in (d.dir / "log.jsonl").read_text()
+    log = (d.dir / "log.jsonl").read_text()
+    for raw in [server.PASSWORD, "12345", "Jordan", "4,210.55", "4210.55"]:
+        assert raw not in log, raw  # the model saw the input; nothing sensitive is persisted
 
 
 def test_irreversible_action_escalates(surface, base, tmp_path):

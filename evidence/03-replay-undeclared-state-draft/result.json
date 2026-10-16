@@ -1,0 +1,21 @@
+{
+  "run_id": "20261016-123338-replay-268ab6",
+  "capability": "mockbank_core.get_savings_balance",
+  "version": "1.0.0",
+  "status": "failed",
+  "outputs": {},
+  "error": {
+    "code": "unclassified_state",
+    "step_id": "click_the_go_button_to_search_for_the_me",
+    "expected": "text 'Member Detail' in main",
+    "observed": "--- frame: menu\n[e0 link \"Member Inquiry\"] | [e1 link \"Transfers\"] | [e2 link \"Sign Off\"]\nMockBank Core v2.4.1\n--- frame: main\nMember Inquiry |\nE404 NO MEMBER ON FILE\nMember # | [e3 textbox \"\"] | [e4 button \"Go\"] |\nMockBank Core v2.4.1",
+    "evidence": [
+      "00-unclassified_state.png",
+      "00-unclassified_state.txt"
+    ]
+  },
+  "recoveries": [],
+  "handoffs": [],
+  "evidence_dir": "C:\\Users\\ankit\\.claude\\jobs\\3d497cd0\\tmp\\ev\\20261016-123338-replay-268ab6",
+  "duration_ms": 10780
+}

@@ -1,0 +1,13 @@
+{"t": "2026-10-16T16:33:38.502+00:00", "event": "run_start", "capability": "mockbank_core.get_savings_balance", "version": "1.0.0", "artifact_status": "draft", "inputs": {"member_id": "***99"}}
+{"t": "2026-10-16T16:33:38.522+00:00", "event": "step_start", "step_id": "fill_in_the_user_id", "action": "fill", "intent": "Fill in the user ID"}
+{"t": "2026-10-16T16:33:38.567+00:00", "event": "step_ok", "step_id": "fill_in_the_user_id", "ms": 46}
+{"t": "2026-10-16T16:33:38.567+00:00", "event": "step_start", "step_id": "fill_in_the_password", "action": "fill", "intent": "Fill in the password"}
+{"t": "2026-10-16T16:33:38.580+00:00", "event": "step_ok", "step_id": "fill_in_the_password", "ms": 15}
+{"t": "2026-10-16T16:33:38.582+00:00", "event": "step_start", "step_id": "click_the_sign_on_button_to_log_in", "action": "click", "intent": "Click the Sign On button to log in"}
+{"t": "2026-10-16T16:33:38.809+00:00", "event": "step_ok", "step_id": "click_the_sign_on_button_to_log_in", "ms": 234}
+{"t": "2026-10-16T16:33:38.809+00:00", "event": "step_start", "step_id": "navigate_to_the_member_inquiry_screen_to", "action": "click", "intent": "Navigate to the Member Inquiry screen to look up a member."}
+{"t": "2026-10-16T16:33:39.050+00:00", "event": "step_ok", "step_id": "navigate_to_the_member_inquiry_screen_to", "ms": 233}
+{"t": "2026-10-16T16:33:39.050+00:00", "event": "step_start", "step_id": "fill_in_the_member_id_to_search_for_the", "action": "fill", "intent": "Fill in the member ID to search for the member."}
+{"t": "2026-10-16T16:33:39.077+00:00", "event": "step_ok", "step_id": "fill_in_the_member_id_to_search_for_the", "ms": 31}
+{"t": "2026-10-16T16:33:39.077+00:00", "event": "step_start", "step_id": "click_the_go_button_to_search_for_the_me", "action": "click", "intent": "Click the Go button to search for the member."}
+{"t": "2026-10-16T16:33:49.285+00:00", "event": "run_end", "result": {"run_id": "20261016-123338-replay-268ab6", "capability": "mockbank_core.get_savings_balance", "version": "1.0.0", "status": "failed", "outputs": {}, "error": {"code": "unclassified_state", "step_id": "click_the_go_button_to_search_for_the_me", "expected": "text 'Member Detail' in main", "observed": "--- frame: menu\n[e0 link \"Member Inquiry\"] | [e1 link \"Transfers\"] | [e2 link \"Sign Off\"]\nMockBank Core v2.4.1\n--- frame: main\nMember Inquiry |\nE404 NO MEMBER ON FILE\nMember # | [e3 textbox \"\"] | [e4 button \"Go\"] |\nMockBank Core v2.4.1", "evidence": ["00-unclassified_state.png", "00-unclassified_state.txt"]}, "recoveries": [], "handoffs": [], "evidence_dir": "C:\\Users\\ankit\\.claude\\jobs\\3d497cd0\\tmp\\ev\\20261016-123338-replay-268ab6", "duration_ms": 10780}}

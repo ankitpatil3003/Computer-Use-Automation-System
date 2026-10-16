@@ -185,6 +185,8 @@ class Profile(Strict):
     id: str
     product: str
     detectors: list[Detector]
+    pii_labels: list[str] = Field(default_factory=list,
+                                  description="screen labels whose adjacent value is PII; masked in every observation")
 
     @classmethod
     def load(cls, path: str | Path) -> Profile:

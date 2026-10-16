@@ -100,7 +100,7 @@ class Replayer:
         self.secrets, self.tenant = secrets, tenant
         self.confirm_irreversible = confirm_irreversible
         self.dir = new_run_dir(runs_dir, "replay")
-        self.redact = Redactor()
+        self.redact = Redactor(profile.pii_labels)
         self.log = RunLog(self.dir, self.redact)
         self.recoveries: list[dict[str, Any]] = []
         self.handoffs: list[dict[str, Any]] = []

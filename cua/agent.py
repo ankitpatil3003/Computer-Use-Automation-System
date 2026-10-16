@@ -90,10 +90,15 @@ class Discovery:
         self.secrets, self.base_url, self.runs_dir = secrets, base_url, runs_dir
         self.max_steps, self.min_interval_s = max_steps, min_interval_s
         self.dir = new_run_dir(runs_dir, "discover")
-        self.redact = Redactor()  # secrets + PII patterns; inputs stay visible — the model must type them
+        # Two views. The model's: secrets, PII-labelled fields and PII/money patterns masked, but the
+        # inputs visible (it has to type them). What is persisted: that, plus the inputs masked.
+        self.redact, self.persist = Redactor(profile.pii_labels), Redactor(profile.pii_labels)
         for name, value in secrets.items():
             self.redact.add(value, "secret", name)
-        self.log = RunLog(self.dir, self.redact)
+            self.persist.add(value, "secret", name)
+        for name, value in self.inputs.items():
+            self.persist.add(value, "pii_id", name)
+        self.log = RunLog(self.dir, self.persist)
         self.lease = Lease(self.dir / "control.json", self.dir.name)
         self.recorder = Recorder(surface, profile, self.inputs)
         self.usage = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0}
@@ -142,11 +147,11 @@ class Discovery:
             status, info = "failed", {"reason": str(e)}
         except APIError as e:  # provider outage/quota: end as a logged run, not a traceback
             status, info = "failed", {"reason": f"llm_unavailable: {type(e).__name__}: {e.message}"}
-        summary = {"run_id": self.dir.name, "status": status, "goal": self.redact(self.goal),
+        summary = {"run_id": self.dir.name, "status": status, "goal": self.persist(self.goal),
                    "steps_recorded": len(self.recorder.steps), "llm": self.usage,
                    "duration_s": round(time.monotonic() - t0, 1), **info}
         self.log("discovery_end", **summary)
-        (self.dir / "result.json").write_text(json.dumps(self.redact.scrub(summary), indent=2), encoding="utf-8")
+        (self.dir / "result.json").write_text(json.dumps(self.persist.scrub(summary), indent=2), encoding="utf-8")
         return summary
 
     def _chat(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]):
@@ -247,7 +252,9 @@ class Discovery:
             return f"error: {e}"
         self.recorder.extract(args["output"], out, raw, value)
         self.log("extracted", output=args["output"], source=source.model_dump(exclude_none=True))
-        return f"ok: {args['output']} = {value!r}"
+        self.persist.add(raw, out.sensitivity, args["output"])
+        self.persist.add(value, out.sensitivity, args["output"])
+        return f"ok: recorded {args['output']} ({out.type}); the value is returned to the caller, not to you"
 
     def _finish(self, args: dict[str, Any], turn: int) -> None:
         success = Check(frame=frame_path(args["frame"]), text=args["success_text"])
@@ -259,7 +266,7 @@ class Discovery:
         cap = self.recorder.compile(
             name=args["capability_name"], description=args["description"],
             input_descriptions=args.get("input_descriptions") or {}, success=success, entry=self.start_url,
-            base_url=self.base_url, model=self.model, run_id=self.dir.name, goal=self.redact(self.goal))
+            base_url=self.base_url, model=self.model, run_id=self.dir.name, goal=self.persist(self.goal))
         cap.save(self.dir / "artifact.draft.json")
         self.log("compiled", capability=cap.id, steps=len(cap.steps), outputs=list(cap.outputs))
 
@@ -284,9 +291,9 @@ class Discovery:
             pass
         # ponytail: discovery escalation routes the request but does not hold the session for takeover;
         # live handoff is on the replay path. Resuming an LLM loop after human steps is the next build.
-        path = write_request(self.dir, live=False, kind="discovery", goal=self.redact(self.goal), turn=turn,
-                             reason=reason, url=self.redact(self.surface.url), screenshot=shot.name,
-                             screen=self.redact(self.surface.observe()))
+        path = write_request(self.dir, live=False, kind="discovery", goal=self.persist(self.goal), turn=turn,
+                             reason=self.persist(reason), url=self.persist(self.surface.url), screenshot=shot.name,
+                             screen=self.persist(self.surface.observe()))
         self.lease.transition("AWAITING_HUMAN", "automation", reason)
         self.lease.transition("ABORTED", "automation", "discovery does not hold sessions for takeover")
         self.log("escalation", reason=reason, turn=turn)

@@ -1,0 +1,24 @@
+{
+  "run_id": "20261016-123431-replay-500e24",
+  "requested_at": "2026-10-16T16:34:32+00:00",
+  "live_session": true,
+  "kind": "replay",
+  "capability": "mockbank_core.get_savings_balance",
+  "version": "1.1.0",
+  "code": "supervisor_override_required",
+  "reason": "Record is flagged; a supervisor must authorize access.",
+  "step_id": "click_the_go_button_to_search_for_the_me",
+  "step_intent": "Click the Go button to search for the member.",
+  "url": "http://127.0.0.1:8765/",
+  "evidence": [
+    "00-supervisor_override_required.png",
+    "00-supervisor_override_required.txt"
+  ],
+  "screen": "--- frame: menu\n[e0 link \"Member Inquiry\"] | [e1 link \"Transfers\"] | [e2 link \"Sign Off\"]\nMockBank Core v2.4.1\n--- frame: main\nSUPERVISOR OVERRIDE REQUIRED |\nMember record is flagged. A supervisor must authorize access.\nOverride Code | [e3 textbox \"\" password] |\n[e4 button \"Authorize\"]\nMockBank Core v2.4.1",
+  "operator": {
+    "claim": "cua operator claim 20261016-123431-replay-500e24",
+    "resume": "cua operator release 20261016-123431-replay-500e24",
+    "finished_by_hand": "cua operator release 20261016-123431-replay-500e24 --completed",
+    "abort": "cua operator abort 20261016-123431-replay-500e24"
+  }
+}
