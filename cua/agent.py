@@ -15,7 +15,7 @@ from typing import Any, Mapping
 from openai import APIError
 from playwright.sync_api import Error as PWError
 
-from cua.handoff import Lease, write_request
+from cua.handoff import MAX_HANDOFFS, Lease, await_operator, write_request
 from cua.policy import Policy, PolicyViolation, Redactor
 from cua.recorder import Recorder, frame_path
 from cua.replay import Replayer, RunLog, convert, new_run_dir
@@ -37,7 +37,7 @@ Rules:
   posting, approving, authorizing). If the goal seems to need one, call ask_human.
 - If a system notice or dialog appears, dismiss it and continue.
 - If you are blocked, the screen is not what you expect, or a supervisor/approval is required,
-  call ask_human with the reason rather than guessing.
+  call ask_human with the reason rather than guessing. A human may take over and hand back.
 - When the requested data is visible, call extract once per value, then finish."""
 
 
@@ -83,12 +83,16 @@ class _Done(Exception):
 class Discovery:
     def __init__(self, goal: str, start_url: str, inputs: Mapping[str, str], *, client: Any, model: str,
                  policy: Policy, profile: Profile, surface: Surface, secrets: Mapping[str, str],
-                 base_url: str, runs_dir: str = "runs", max_steps: int = 25, min_interval_s: float = 0.0):
+                 base_url: str, runs_dir: str = "runs", max_steps: int = 25, min_interval_s: float = 0.0,
+                 timeout_s: float = 600, handoff_wait_s: float = 0):
         self.goal, self.start_url, self.inputs = goal, start_url, dict(inputs)
         self.client, self.model = client, model
         self.policy, self.profile, self.surface = policy, profile, surface
         self.secrets, self.base_url, self.runs_dir = secrets, base_url, runs_dir
         self.max_steps, self.min_interval_s = max_steps, min_interval_s
+        self.timeout_s, self.handoff_wait_s = timeout_s, handoff_wait_s
+        self.handoffs: list[dict[str, Any]] = []
+        self.paused_s = 0.0  # time a human held the session; does not count against timeout_s
         self.dir = new_run_dir(runs_dir, "discover")
         # Two views. The model's: secrets, PII-labelled fields and PII/money patterns masked, but the
         # inputs visible (it has to type them). What is persisted: that, plus the inputs masked.
@@ -124,7 +128,12 @@ class Discovery:
             self.surface.goto(self.start_url)
             obs = self.surface.observe()
             for turn in range(1, self.max_steps + 1):
+                if time.monotonic() - t0 - self.paused_s > self.timeout_s:
+                    self._escalate(f"timeout: goal not reached within {self.timeout_s:g}s", turn, resumable=False)
                 screen = self.redact(obs)
+                if self.surface.dialogs:  # the model must know a native dialog came and went
+                    screen = f"--- native dialog shown and answered Cancel: {self.surface.dialogs}\n{screen}"
+                    self.surface.dialogs.clear()
                 self.log("observe", turn=turn, screen=screen)
                 msg = self._chat([*history, {"role": "user", "content": f"Current screen:\n{screen}"}], tools)
                 history.append(_assistant(msg))
@@ -139,8 +148,11 @@ class Discovery:
                 for c in extra:
                     history.append({"role": "tool", "tool_call_id": c.id, "content": "ignored: one action per turn"})
                 if unchanged >= 3:
-                    self._escalate("no progress: the screen did not change after 3 consecutive actions", turn)
-            self._escalate(f"step budget exhausted ({self.max_steps} turns) before the goal was reached", self.max_steps)
+                    note = self._escalate("no progress: the screen did not change after 3 consecutive actions", turn)
+                    history.append({"role": "user", "content": note})
+                    obs, unchanged = self.surface.observe(), 0
+            self._escalate(f"step budget exhausted ({self.max_steps} turns) before the goal was reached",
+                           self.max_steps, resumable=False)
         except _Done as d:
             status, info = d.status, d.info
         except PolicyViolation as e:
@@ -148,7 +160,7 @@ class Discovery:
         except APIError as e:  # provider outage/quota: end as a logged run, not a traceback
             status, info = "failed", {"reason": f"llm_unavailable: {type(e).__name__}: {e.message}"}
         summary = {"run_id": self.dir.name, "status": status, "goal": self.persist(self.goal),
-                   "steps_recorded": len(self.recorder.steps), "llm": self.usage,
+                   "steps_recorded": len(self.recorder.steps), "llm": self.usage, "handoffs": self.handoffs,
                    "duration_s": round(time.monotonic() - t0, 1), **info}
         self.log("discovery_end", **summary)
         (self.dir / "result.json").write_text(json.dumps(self.persist.scrub(summary), indent=2), encoding="utf-8")
@@ -186,7 +198,7 @@ class Discovery:
             if name == "extract":
                 return self._extract(args), obs
             if name == "ask_human":
-                self._escalate(f"agent asked for help: {args.get('reason', '')}", turn)
+                return self._escalate(f"agent asked for help: {args.get('reason', '')}", turn), self.surface.observe()
             if name == "finish":
                 self._finish(args, turn)
             return f"error: unknown tool {name!r}", obs
@@ -202,7 +214,8 @@ class Discovery:
         intent = args.get("intent") or f"{action} {target.description}"
         if self.policy.risk(Step(id="probe", action=action, target=target, value="", intent=intent)) == "irreversible":
             self.log("policy_block", turn=turn, target=target.description)
-            self._escalate(f"policy: {target.description} is irreversible; a human must decide", turn)
+            note = self._escalate(f"policy: {target.description} is irreversible; a human must decide", turn)
+            return f"BLOCKED: you may not use {target.description}. {note}", self.surface.observe()
         if name == "fill_secret":
             if args["secret"] not in self.secrets:
                 return f"error: unknown secret {args['secret']!r}; available: {sorted(self.secrets)}", obs
@@ -272,7 +285,7 @@ class Discovery:
 
         # Save rule: the artifact must replay deterministically, right now, to the same outputs.
         result = Replayer(cap, self.profile, self.policy, self.surface, secrets=self.secrets,
-                          tenant={"base_url": self.base_url}, runs_dir=self.runs_dir).run(self.inputs)
+                          tenant={"base_url": self.base_url}, runs_dir=self.runs_dir, allow_draft=True).run(self.inputs)
         validation = {"run_id": result.run_id, "status": result.status,
                       "outputs_match": result.outputs == self.recorder.values,
                       "error": result.error.model_dump(exclude_none=True) if result.error else None}
@@ -283,21 +296,40 @@ class Discovery:
         raise _Done("success", capability=cap.id, artifact=str(self.dir / "artifact.draft.json"),
                     validation=validation)
 
-    def _escalate(self, reason: str, turn: int) -> None:
+    def _escalate(self, reason: str, turn: int, resumable: bool = True) -> str:
+        """Route an intervention request. With an operator wait configured, hold this live session
+        for a human; returns a note for the model if they hand it back, otherwise ends the run."""
         shot = self.dir / f"escalation-turn{turn:02d}.png"
         try:
-            self.surface.screenshot(shot)
+            self.surface.screenshot(shot, self.profile.pii_labels, self.persist.known)
         except PWError:
             pass
-        # ponytail: discovery escalation routes the request but does not hold the session for takeover;
-        # live handoff is on the replay path. Resuming an LLM loop after human steps is the next build.
-        path = write_request(self.dir, live=False, kind="discovery", goal=self.persist(self.goal), turn=turn,
+        live = resumable and self.handoff_wait_s > 0 and len(self.handoffs) < MAX_HANDOFFS
+        path = write_request(self.dir, live=live, kind="discovery", goal=self.persist(self.goal), turn=turn,
                              reason=self.persist(reason), url=self.persist(self.surface.url), screenshot=shot.name,
                              screen=self.persist(self.surface.observe()))
         self.lease.transition("AWAITING_HUMAN", "automation", reason)
-        self.lease.transition("ABORTED", "automation", "discovery does not hold sessions for takeover")
-        self.log("escalation", reason=reason, turn=turn)
-        raise _Done("needs_human", reason=reason, intervention=str(path))
+        self.log("escalation", reason=reason, turn=turn, live=live)
+        if not live:
+            self.lease.transition("ABORTED", "automation", "not resumable" if not resumable else
+                                  "handoff budget exhausted" if self.handoff_wait_s > 0 else "no operator wait configured")
+            raise _Done("needs_human", reason=reason, intervention=str(path))
+        t = time.monotonic()
+        rec = await_operator(self.lease, self.surface, self.handoff_wait_s, self.persist, self.log, "agent_escalation")
+        self.paused_s += time.monotonic() - t
+        self.handoffs.append(rec)
+        if rec["resolution"] == "AUTOMATION":
+            # The human's actions are context for the model, not recorded steps: if the flow needs
+            # them every time, the validation replay fails and the save rule keeps the artifact out.
+            did = "; ".join(f'{a["kind"]} {a["role"]} "{a["name"]}"' for a in rec["actions"]) or "no recorded actions"
+            return (f"A human operator took over the live session and handed it back. They did: {did}. "
+                    "Those actions are not part of the recorded procedure. Continue from the current screen.")
+        if rec["resolution"] == "COMPLETED_BY_HUMAN":
+            raise _Done("needs_human", reason=f"{reason}; the operator finished the task by hand, so no "
+                                              "capability was recorded", intervention=str(path))
+        if rec["resolved_by"] == "automation":  # nobody claimed it in time
+            raise _Done("needs_human", reason=reason, intervention=str(path))
+        raise _Done("failed", reason=f"operator aborted: {reason}", intervention=str(path))
 
 
 def _assistant(msg: Any) -> dict[str, Any]:

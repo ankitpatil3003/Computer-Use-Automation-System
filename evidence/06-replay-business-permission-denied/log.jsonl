@@ -1,0 +1,14 @@
+{"t": "2026-10-19T19:28:48.889+00:00", "event": "run_start", "capability": "mockbank_core.get_savings_balance", "version": "1.1.0", "artifact_status": "approved", "inputs": {"member_id": "***80"}}
+{"t": "2026-10-19T19:28:48.906+00:00", "event": "step_start", "step_id": "fill_user_id", "action": "fill", "intent": "Fill in the user ID"}
+{"t": "2026-10-19T19:28:48.939+00:00", "event": "step_ok", "step_id": "fill_user_id", "ms": 31}
+{"t": "2026-10-19T19:28:48.939+00:00", "event": "step_start", "step_id": "fill_password", "action": "fill", "intent": "Fill in the password"}
+{"t": "2026-10-19T19:28:48.950+00:00", "event": "step_ok", "step_id": "fill_password", "ms": 14}
+{"t": "2026-10-19T19:28:48.951+00:00", "event": "step_start", "step_id": "click_sign_on", "action": "click", "intent": "Click the Sign On button to log in"}
+{"t": "2026-10-19T19:28:49.190+00:00", "event": "step_ok", "step_id": "click_sign_on", "ms": 235}
+{"t": "2026-10-19T19:28:49.191+00:00", "event": "step_start", "step_id": "click_member_inquiry", "action": "click", "intent": "Navigate to the Member Inquiry screen to look up a member."}
+{"t": "2026-10-19T19:28:49.431+00:00", "event": "step_ok", "step_id": "click_member_inquiry", "ms": 233}
+{"t": "2026-10-19T19:28:49.431+00:00", "event": "step_start", "step_id": "fill_member", "action": "fill", "intent": "Fill in the member ID to search for the member."}
+{"t": "2026-10-19T19:28:49.458+00:00", "event": "step_ok", "step_id": "fill_member", "ms": 30}
+{"t": "2026-10-19T19:28:49.458+00:00", "event": "step_start", "step_id": "click_go", "action": "click", "intent": "Click Go to search for the member."}
+{"t": "2026-10-19T19:28:49.694+00:00", "event": "state_detected", "code": "permission_denied", "kind": "business", "step_id": "click_go"}
+{"t": "2026-10-19T19:28:49.696+00:00", "event": "run_end", "result": {"run_id": "20261019-152848-replay-63cb42", "capability": "mockbank_core.get_savings_balance", "version": "1.1.0", "status": "business_outcome", "outputs": {}, "outcome": {"code": "permission_denied", "message": "The service account is not permitted to view this record.", "evidence": []}, "recoveries": [], "handoffs": [], "evidence_dir": "C:\\Users\\ankit\\.claude\\jobs\\3d497cd0\\tmp\\ev3\\20261019-152848-replay-63cb42", "duration_ms": 797}}

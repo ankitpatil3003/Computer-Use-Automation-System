@@ -1,0 +1,22 @@
+{"t": "2026-10-19T19:28:56.791+00:00", "event": "run_start", "capability": "mockbank_core.get_savings_balance", "version": "1.1.0", "artifact_status": "approved", "inputs": {"member_id": "***45"}}
+{"t": "2026-10-19T19:28:56.807+00:00", "event": "step_start", "step_id": "fill_user_id", "action": "fill", "intent": "Fill in the user ID"}
+{"t": "2026-10-19T19:28:56.840+00:00", "event": "step_ok", "step_id": "fill_user_id", "ms": 30}
+{"t": "2026-10-19T19:28:56.841+00:00", "event": "step_start", "step_id": "fill_password", "action": "fill", "intent": "Fill in the password"}
+{"t": "2026-10-19T19:28:56.851+00:00", "event": "step_ok", "step_id": "fill_password", "ms": 0}
+{"t": "2026-10-19T19:28:56.852+00:00", "event": "step_start", "step_id": "click_sign_on", "action": "click", "intent": "Click the Sign On button to log in"}
+{"t": "2026-10-19T19:28:56.919+00:00", "event": "state_detected", "code": "session_expired", "kind": "recoverable", "step_id": "click_sign_on"}
+{"t": "2026-10-19T19:28:56.920+00:00", "event": "recovery", "code": "session_expired", "action": "restart", "step_id": "click_sign_on"}
+{"t": "2026-10-19T19:28:56.930+00:00", "event": "step_start", "step_id": "fill_user_id", "action": "fill", "intent": "Fill in the user ID"}
+{"t": "2026-10-19T19:28:56.950+00:00", "event": "step_ok", "step_id": "fill_user_id", "ms": 30}
+{"t": "2026-10-19T19:28:56.950+00:00", "event": "step_start", "step_id": "fill_password", "action": "fill", "intent": "Fill in the password"}
+{"t": "2026-10-19T19:28:56.960+00:00", "event": "step_ok", "step_id": "fill_password", "ms": 0}
+{"t": "2026-10-19T19:28:56.960+00:00", "event": "step_start", "step_id": "click_sign_on", "action": "click", "intent": "Click the Sign On button to log in"}
+{"t": "2026-10-19T19:28:57.187+00:00", "event": "step_ok", "step_id": "click_sign_on", "ms": 235}
+{"t": "2026-10-19T19:28:57.187+00:00", "event": "step_start", "step_id": "click_member_inquiry", "action": "click", "intent": "Navigate to the Member Inquiry screen to look up a member."}
+{"t": "2026-10-19T19:28:57.431+00:00", "event": "step_ok", "step_id": "click_member_inquiry", "ms": 233}
+{"t": "2026-10-19T19:28:57.432+00:00", "event": "step_start", "step_id": "fill_member", "action": "fill", "intent": "Fill in the member ID to search for the member."}
+{"t": "2026-10-19T19:28:57.458+00:00", "event": "step_ok", "step_id": "fill_member", "ms": 14}
+{"t": "2026-10-19T19:28:57.459+00:00", "event": "step_start", "step_id": "click_go", "action": "click", "intent": "Click Go to search for the member."}
+{"t": "2026-10-19T19:28:57.682+00:00", "event": "step_ok", "step_id": "click_go", "ms": 235}
+{"t": "2026-10-19T19:28:57.692+00:00", "event": "extracted", "outputs": {"savings_balance": "[FIN:savings_balance]"}}
+{"t": "2026-10-19T19:28:57.692+00:00", "event": "run_end", "result": {"run_id": "20261019-152856-replay-298b5f", "capability": "mockbank_core.get_savings_balance", "version": "1.1.0", "status": "success", "outputs": {"savings_balance": "[FIN:savings_balance]"}, "recoveries": [{"code": "session_expired", "action": "restart", "step_id": "click_sign_on"}], "handoffs": [], "evidence_dir": "C:\\Users\\ankit\\.claude\\jobs\\3d497cd0\\tmp\\ev3\\20261019-152856-replay-298b5f", "duration_ms": 906}}

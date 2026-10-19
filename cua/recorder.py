@@ -89,7 +89,10 @@ class Recorder:
         return None
 
     def record(self, action: str, target: Locator, value: str | None, intent: str, expect: Check | None) -> Step:
-        step = Step(id=slug(intent, {s.id for s in self.steps}), action=action, target=target,
+        # The id comes from what the step does (action + control name), never from the model's
+        # wording: re-recording the same flow yields the same ids, so tenant overlays keep applying.
+        label = m[1] if (m := re.search(r'"(.+)"', target.description)) else target.description
+        step = Step(id=slug(f"{action} {label}", {s.id for s in self.steps}), action=action, target=target,
                     value=None if value is None else self.template(value), intent=intent, expect=expect)
         self.steps.append(step)
         return step

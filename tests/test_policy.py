@@ -21,6 +21,9 @@ def test_risk_is_the_stricter_of_artifact_and_policy():
     assert POLICY.risk(step("Authorize")) == "irreversible"
     assert POLICY.risk(step("Go")) == "safe"
     assert POLICY.risk(step("Go", risk="irreversible")) == "irreversible"
+    fill = Step(id="s", action="fill", intent="i", value="10.00",
+                target={"strategies": [{"by": "text_anchor", "anchor": "Transfer Amount", "role": "textbox"}]})
+    assert POLICY.risk(fill) == "safe"  # typing into a field labelled "Transfer" commits nothing
 
 
 def test_redaction():
@@ -40,3 +43,5 @@ def test_profile_labelled_fields_and_amounts_are_masked_without_knowing_the_valu
     out = Redactor(["Name", "SSN"])(screen)
     assert out.splitlines() == ["Name | [PII:Name] |", "SSN | [PII:SSN] |",
                                 "Share Savings | ****9-01 | [AMOUNT] |", "Named | ok |"]
+    form = 'Name | [e3 textbox "" value="Casey"] |'
+    assert Redactor(["Name"])(form).startswith('Name | [e3 textbox')  # a control ref is never masked away

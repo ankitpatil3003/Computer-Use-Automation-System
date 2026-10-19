@@ -17,7 +17,6 @@ from __future__ import annotations
 import json
 import re
 import secrets
-import sys
 import time
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -26,13 +25,12 @@ from typing import Any, Mapping
 
 from playwright.sync_api import Error as PWError
 
-from cua.handoff import ControlError, Lease, write_request
+from cua.handoff import MAX_HANDOFFS, Lease, await_operator, write_request
 from cua.policy import Policy, PolicyViolation, Redactor
 from cua.schema import TEMPLATE_RE, Capability, Check, Detector, Failure, Outcome, Output, Profile, RunResult, Step
 from cua.surface import LocatorError, Surface
 
 MAX_RECOVERIES = 3
-MAX_HANDOFFS = 2  # a human who could not fix it twice will not on the third try
 SUCCESS_TIMEOUT_MS = 10_000
 POLL_S = 0.15
 
@@ -94,13 +92,15 @@ def convert(raw: str, out: Output) -> Any:
 class Replayer:
     def __init__(self, cap: Capability, profile: Profile, policy: Policy, surface: Surface, *,
                  secrets: Mapping[str, str], tenant: Mapping[str, str], runs_dir: str | Path = "runs",
-                 confirm_irreversible: bool = False, handoff_wait_s: float = 0):
+                 confirm_irreversible: bool = False, handoff_wait_s: float = 0, allow_draft: bool = False):
         self.cap, self.policy, self.surface = cap, policy, surface
         self.detectors: list[Detector] = [*cap.outcomes, *profile.detectors]  # specific before generic
         self.secrets, self.tenant = secrets, tenant
         self.confirm_irreversible = confirm_irreversible
         self.dir = new_run_dir(runs_dir, "replay")
         self.redact = Redactor(profile.pii_labels)
+        self.pii_labels = profile.pii_labels  # also masked in failure screenshots
+        self.allow_draft = allow_draft  # unattended (production) replay requires status=approved
         self.log = RunLog(self.dir, self.redact)
         self.recoveries: list[dict[str, Any]] = []
         self.handoffs: list[dict[str, Any]] = []
@@ -116,6 +116,10 @@ class Replayer:
         status, outcome, error, outputs = "success", None, None, {}
         try:
             self._bind(inputs)
+            if self.cap.status != "approved" and not self.allow_draft:
+                raise _Finish("failed", error=Failure(
+                    code="not_approved", expected="an approved capability (drafts run only with --allow-draft)",
+                    observed=f"{self.cap.id}@{self.cap.version} has status={self.cap.status}"))
             self.log("run_start", capability=self.cap.id, version=self.cap.version,
                      artifact_status=self.cap.status, inputs=dict(inputs))
             self.surface.lease = self.lease
@@ -200,6 +204,7 @@ class Replayer:
         except PolicyViolation as e:
             raise _Finish("failed", error=Failure(code="policy_violation", expected="entry URL inside allowlist", observed=str(e)))
         self.surface.reset_session()
+        self.surface.dialogs.clear()  # a fresh session starts with nothing unexplained
         try:
             self.surface.goto(url)
         except PWError as e:
@@ -281,6 +286,16 @@ class Replayer:
 
     def _settle(self, step: Step | None) -> bool:
         """Classify the current screen. Terminal states raise; returns True if a recovery ran."""
+        if self.surface.dialogs:
+            # A native alert/confirm the flow never declared. The surface already answered it
+            # Cancel (the safe answer); continuing as if nothing happened would be guessing.
+            dialogs, self.surface.dialogs[:] = list(self.surface.dialogs), []
+            self.log("native_dialog", step_id=step.id if step else None, dialogs=dialogs)
+            raise _Finish("failed", error=Failure(
+                code="unclassified_state", step_id=step.id if step else None,
+                expected=step.intent if step else "success state",
+                observed=f"unexpected native dialog, dismissed (Cancel): {dialogs}",
+                evidence=self._evidence("native_dialog")))
         det = next((d for d in self.detectors if self.surface.holds(d.when)), None)
         if det is None:
             return False
@@ -327,57 +342,24 @@ class Replayer:
                       code=code, reason=message, step_id=step.id if step else None,
                       step_intent=step.intent if step else None, url=self.redact(self.surface.url),
                       evidence=evidence, screen=self._observed())
-        asked = self.lease.transition("AWAITING_HUMAN", "automation", code)["seq"]
+        self.lease.transition("AWAITING_HUMAN", "automation", code)
         self.log("handoff_requested", code=code, step_id=step.id if step else None, live=live)
         if not live:
             why = "handoff budget exhausted" if self.handoff_wait_s > 0 else "no operator wait configured"
             self.lease.transition("ABORTED", "automation", why)
             raise _Finish("needs_human", outcome=outcome)
-        print(f"[cua] run {self.dir.name} needs a human ({code}): {message}\n"
-              f"[cua]   take over the open browser:  cua operator claim {self.dir.name}", file=sys.stderr)
-        record: dict[str, Any] = {"code": code, "step_id": step.id if step else None,
-                                  "requested_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+        record = await_operator(self.lease, self.surface, self.handoff_wait_s, self.redact, self.log,
+                                code, step.id if step else None)
         self.handoffs.append(record)
-        state, lease = self._wait_for_operator()
-        record["actions"] = self.redact.scrub(self.surface.human_events)
-        self.surface.human_events.clear()
-        last = lease["history"][-1]
-        # the lease history is the record of who held the session (a claim+release can fall
-        # between two polls), so read the claim from it rather than from what the loop saw
-        claim = next((h for h in lease["history"][asked:] if h["to"] == "HUMAN"), None)
-        if claim:
-            record["claimed_by"], record["claimed_at"] = claim["by"], claim["at"]
-        record.update(resolution=state, resolved_by=last["by"], resolved_at=last["at"])
-        if last.get("note"):
-            record["note"] = self.redact(last["note"])
-        self.log("handoff_resolved", **record)
-        if state == "AUTOMATION":
+        if record["resolution"] == "AUTOMATION":
             return
-        if state == "COMPLETED_BY_HUMAN":
+        if record["resolution"] == "COMPLETED_BY_HUMAN":
             raise _HumanCompleted()
-        if last["by"] == "automation":  # nobody claimed it in time
+        if record["resolved_by"] == "automation":  # nobody claimed it in time
             raise _Finish("needs_human", outcome=outcome)
         raise _Finish("failed", error=Failure(code="aborted", step_id=record["step_id"],
                                               expected=f"operator resolves {code}",
-                                              observed=f"aborted by {last['by']}", evidence=evidence))
-
-    def _wait_for_operator(self) -> tuple[str, dict[str, Any]]:
-        """Hold the live session until the lease leaves human hands. No timeout once claimed:
-        automation never yanks the session from a human mid-task."""
-        deadline, claim_logged = time.monotonic() + self.handoff_wait_s, False
-        while True:
-            self.surface.idle(250)  # keeps the browser serviced: human-action capture runs here
-            lease = self.lease.read()
-            if lease["state"] == "HUMAN" and not claim_logged:
-                claim_logged = True
-                self.log("handoff_claimed", by=lease["holder"])
-            if lease["state"] in ("AUTOMATION", "COMPLETED_BY_HUMAN", "ABORTED"):
-                return lease["state"], lease
-            if lease["state"] == "AWAITING_HUMAN" and time.monotonic() > deadline:
-                try:
-                    self.lease.transition("ABORTED", "automation", f"unclaimed after {self.handoff_wait_s:g}s")
-                except ControlError:
-                    pass  # claimed in the meantime; keep waiting
+                                              observed=f"aborted by {record['resolved_by']}", evidence=evidence))
 
     def _fail_action(self, step: Step | None, e: Exception) -> None:
         code = e.code if isinstance(e, LocatorError) else "action_failed"
@@ -414,7 +396,7 @@ class Replayer:
         stem = self.dir / f"{len(list(self.dir.glob('*.png'))):02d}-{label}"
         paths = []
         try:
-            self.surface.screenshot(stem.with_suffix(".png"))
+            self.surface.screenshot(stem.with_suffix(".png"), self.pii_labels, self.redact.known)
             paths.append(stem.with_suffix(".png").name)
         except PWError:
             pass

@@ -16,9 +16,13 @@ from __future__ import annotations
 
 import json
 import os
+import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+
+MAX_HANDOFFS = 2  # per run: a human who could not fix it twice will not on the third try
 
 TRANSITIONS = {
     "AUTOMATION": {"AWAITING_HUMAN"},
@@ -92,3 +96,45 @@ def write_request(run_dir: Path, live: bool, **fields: Any) -> Path:
     path = run_dir / "intervention.json"
     path.write_text(json.dumps(request, indent=2), encoding="utf-8")
     return path
+
+
+def await_operator(lease: Lease, surface: Any, wait_s: float, redact: Any, log: Callable[..., None],
+                   code: str, step_id: str | None = None) -> dict[str, Any]:
+    """Hold the live session for an operator. The lease must already be AWAITING_HUMAN.
+
+    Returns the handoff record; `resolution` is the final lease state (AUTOMATION,
+    COMPLETED_BY_HUMAN or ABORTED). No timeout once claimed: automation never takes the session
+    back from a human mid-task. Shared by replay and discovery.
+    """
+    run_id = lease.read()["run_id"]
+    asked = lease.read()["seq"]
+    print(f"[cua] run {run_id} needs a human ({code})\n"
+          f"[cua]   take over the open browser:  cua operator claim {run_id}", file=sys.stderr)
+    record: dict[str, Any] = {"code": code, "step_id": step_id, "requested_at": _now()}
+    deadline, claim_logged = time.monotonic() + wait_s, False
+    while True:
+        surface.idle(250)  # keeps the browser serviced: human-action capture runs here
+        cur = lease.read()
+        if cur["state"] == "HUMAN" and not claim_logged:
+            claim_logged = True
+            log("handoff_claimed", by=cur["holder"])
+        if cur["state"] in ("AUTOMATION", "COMPLETED_BY_HUMAN", "ABORTED"):
+            break
+        if cur["state"] == "AWAITING_HUMAN" and time.monotonic() > deadline:
+            try:
+                lease.transition("ABORTED", "automation", f"unclaimed after {wait_s:g}s")
+            except ControlError:
+                pass  # claimed in the meantime; keep waiting
+    record["actions"] = redact.scrub(surface.human_events)
+    surface.human_events.clear()
+    last = cur["history"][-1]
+    # the lease history is the record of who held the session (a claim+release can fall between
+    # two polls), so read the claim from it rather than from what this loop happened to see
+    claim = next((h for h in cur["history"][asked:] if h["to"] == "HUMAN"), None)
+    if claim:
+        record["claimed_by"], record["claimed_at"] = claim["by"], claim["at"]
+    record.update(resolution=cur["state"], resolved_by=last["by"], resolved_at=last["at"])
+    if last.get("note"):
+        record["note"] = redact(last["note"])
+    log("handoff_resolved", **record)
+    return record

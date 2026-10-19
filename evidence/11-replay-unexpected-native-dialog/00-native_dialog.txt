@@ -1,0 +1,7 @@
+--- frame: menu
+[e0 link "Member Inquiry"] | [e1 link "Transfers"] | [e2 link "Sign Off"]
+MockBank Core v2.4.1
+--- frame: main
+Member Inquiry |
+Member # | [e3 textbox "" value="***45"] | [e4 button "Go"] |
+MockBank Core v2.4.1

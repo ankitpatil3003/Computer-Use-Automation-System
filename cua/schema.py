@@ -204,7 +204,7 @@ class Outcome(Strict):
 class Failure(Strict):
     code: Literal["input_invalid", "locator_not_found", "locator_ambiguous", "action_failed",
                   "checkpoint_failed", "unclassified_state", "app_error", "policy_violation",
-                  "recovery_exhausted", "extraction_failed", "aborted"]
+                  "recovery_exhausted", "extraction_failed", "aborted", "not_approved"]
     step_id: str | None = None
     expected: str
     observed: str

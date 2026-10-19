@@ -54,6 +54,8 @@ class Policy(BaseModel):
         """Effective risk = the stricter of what the artifact declares and what policy infers."""
         if step.risk == "irreversible" or step.target is None:
             return step.risk
+        if step.action == "fill":
+            return "safe"  # typing commits nothing; the click/press that submits it is what gets classified
         labels = [step.target.description]
         for s in step.target.strategies:
             if isinstance(s, RoleStrategy):
@@ -74,6 +76,9 @@ _PATTERNS: list[tuple[re.Pattern, Any]] = [
 ]
 
 
+PII_PATTERNS = [p for p, _ in _PATTERNS]  # also used to mask screenshots
+
+
 class Redactor:
     """One redactor for everything that leaves memory: logs, LLM observations, human-action capture.
 
@@ -85,7 +90,8 @@ class Redactor:
         self._values: dict[str, str] = {}
         # Legacy screens are label | value rows; the app profile names the labels that carry PII,
         # so values are masked without knowing them in advance (e.g. a member's name on screen).
-        self._labels = re.compile(r"(?m)(^|\| )(" + "|".join(map(re.escape, pii_labels)) + r") \| [^|\n]+") \
+        # (?!\[e\d) keeps a control ref like [e3 textbox "Name"] intact: masking it would blind the agent.
+        self._labels = re.compile(r"(?m)(^|\| )(" + "|".join(map(re.escape, pii_labels)) + r") \| (?!\[e\d)[^|\n]+") \
             if pii_labels else None
 
     def add(self, value: Any, sensitivity: str, label: str) -> None:
@@ -107,6 +113,11 @@ class Redactor:
         for raw in sorted(self._values, key=len, reverse=True):
             text = text.replace(raw, self._values[raw])
         return text
+
+    @property
+    def known(self) -> list[str]:
+        """The literal sensitive values registered so far (screenshots mask them as pixels)."""
+        return list(self._values)
 
     def scrub(self, obj: Any) -> Any:
         if isinstance(obj, str):

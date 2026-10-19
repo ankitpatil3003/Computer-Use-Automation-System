@@ -29,7 +29,7 @@ cp .env.example .env            # then fill in LLM_API_KEY (only needed for disc
 | `MOCKBANK_URL` | CLI | Default `http://127.0.0.1:8765` |
 | `LLM_BASE_URL` | discovery only | Any OpenAI-compatible endpoint. Default: Gemini `https://generativelanguage.googleapis.com/v1beta/openai/` |
 | `LLM_MODEL` | discovery only | `gemini-2.5-flash` (used for the evidence run) |
-| `LLM_API_KEY` | discovery only | Free key from Google AI Studio. Groq / Ollama work by changing these three values. |
+| `LLM_API_KEY` | discovery only | Free key from Google AI Studio. Other OpenAI-compatible providers (Groq, Ollama) should need only these three values, but are untested; the agent relies on `tool_choice="required"`. |
 | `LLM_MIN_INTERVAL_S` | discovery only | Spacing between LLM calls. Default 13 s, because the free tier allows ~5 requests/min. |
 
 ## Running without live services
@@ -37,10 +37,10 @@ cp .env.example .env            # then fill in LLM_API_KEY (only needed for disc
 Everything except `cua discover` runs **without an LLM key or network access**:
 
 ```sh
-pytest                          # 41 tests; starts the mock app in-process, uses a scripted stand-in for the LLM
+pytest                          # 45 tests; starts the mock app in-process, uses a scripted stand-in for the LLM
 ```
 
-Replay and handoff only need the local mock app. A discovered artifact is committed at
+Replay and handoff only need the local mock app. A discovered and reviewed (approved) artifact is committed at
 `capabilities/mockbank_core.get_savings_balance.json`.
 
 ## Demo: discover → replay
@@ -55,23 +55,34 @@ python -m mockbank.server                                   # terminal 1: the ta
 cua discover "Look up the member and read their savings balance" -i member_id=12345 [--headed]
 ```
 
-The agent signs on, navigates the frameset and reads the balance. The recorder emits a draft artifact, and it is saved to
-`capabilities/` **only if an immediate deterministic replay reproduces the same outputs**. The log is in `runs/<run_id>/`.
+The agent signs on, navigates the frameset and reads the balance. The recorder emits a draft artifact. It is saved to
+`capabilities/drafts/` **only if an immediate deterministic replay reproduces the same outputs**. The log is in
+`runs/<run_id>/`. Stop conditions: 25 turns (`--max-steps`), 600 s wall clock (`--timeout`), no progress, or the agent
+asks for help. With `--headed --handoff-wait N`, an escalation holds the live session for an operator (step 3 below),
+and the model continues after they hand back.
 
-**2. Replay** (no LLM):
+**2. Replay** (no LLM). Run the fresh draft as a test, then the reviewed artifact as production does:
 
 ```sh
-CAP=capabilities/mockbank_core.get_savings_balance.json
+cua replay capabilities/drafts/mockbank_core.get_savings_balance.json -i member_id=12345 --allow-draft
+CAP=capabilities/mockbank_core.get_savings_balance.json     # approved: declared outcomes, status=approved
 cua replay $CAP -i member_id=12345      # success        → {"savings_balance": "4210.55"}
 cua replay $CAP -i member_id=99999      # business_outcome member_not_found
 cua replay $CAP -i member_id=12a45      # failed input_invalid (contract check, UI never touched)
 curl "http://127.0.0.1:8765/__faults?reset=1&interstitial=1&error500=1"
 cua replay $CAP -i member_id=12345      # success, with recoveries [system_notice, server_error]
+curl "http://127.0.0.1:8765/__faults?reset=1&confirm=1"
+cua replay $CAP -i member_id=12345      # failed unclassified_state: unexpected native confirm(), answered Cancel
 curl "http://127.0.0.1:8765/__faults?reset=1&error500=9"
-cua replay $CAP -i member_id=12345      # failed recovery_exhausted (+ screenshot)
+cua replay $CAP -i member_id=12345      # failed recovery_exhausted (+ masked screenshot)
 ```
 
-Faults you can inject: `interstitial`, `slow` (+`slow_ms`), `error500`, `expire` (counts; `reset=1` clears them).
+Unattended replay requires `status: approved`; a draft is refused (`not_approved`) unless you pass `--allow-draft`.
+Review means: check the steps, declare the business outcomes, set `status: approved`, bump the version, and save the
+file under `capabilities/`.
+
+Faults you can inject: `interstitial`, `slow` (+`slow_ms`), `error500`, `expire`, `confirm` (counts; `reset=1` clears
+them).
 Data-driven states: `99999` not found, `00000` invalid, `24680` permission denied, `13579` supervisor override.
 
 The result is JSON on stdout, which is the caller's channel and returns the outputs in full. The persisted copy in
@@ -101,13 +112,13 @@ cua/surface.py     Surface protocol + PlaywrightSurface: perception, locator res
 cua/schema.py      Capability artifact, app Profile, RunResult (pydantic; `cua schema` emits JSON Schema)
 cua/agent.py       discovery loop: observe → decide (LLM tool call) → act
 cua/recorder.py    verified locators, derived checkpoints, parameterization → artifact
-cua/replay.py      deterministic executor + outcome classifier + handoff wait
-cua/handoff.py     control lease (control.json) + intervention requests
+cua/replay.py      deterministic executor + outcome classifier
+cua/handoff.py     control lease (control.json), intervention requests, operator wait (shared by replay and discovery)
 cua/policy.py      allowlist, irreversible-action classification, redaction
 cua/cli.py         discover | replay | operator | schema
 mockbank/server.py the hostile target app (stdlib http.server)
 profiles/          app-wide detectors and PII labels per vendor product (mockbank-core@2)
-capabilities/      approved artifacts
+capabilities/      approved artifacts (drafts from discovery land in capabilities/drafts/)
 policy.json        allowlist + risk rules
 evidence/          real discovery + replay + handoff runs
 runs/              per-run output (gitignored)

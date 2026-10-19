@@ -30,6 +30,7 @@ def replay(surface, base, tmp_path):
     def run(member_id="12345", cap=CAP, faults="", secrets=SECRETS, **kw):
         urllib.request.urlopen(f"{base}/__faults?reset=1&{faults}").read()
         surface.blocked.clear()
+        kw.setdefault("allow_draft", True)  # the hand-written fixture is a draft
         r = Replayer(cap, PROFILE, POLICY, surface, secrets=secrets, tenant={"base_url": base},
                      runs_dir=tmp_path, **kw)
         return r.run({"member_id": member_id}), Path(r.dir)
@@ -123,3 +124,17 @@ def test_missing_control_is_a_hard_failure(replay):
     res, _ = replay(cap=CAP.model_copy(update={"steps": steps}))
     assert res.status == "failed" and res.error.code == "locator_not_found" and res.error.step_id == "submit_search"
     assert res.error.evidence
+
+
+def test_unattended_replay_requires_an_approved_capability(replay):
+    res, run_dir = replay(allow_draft=False)
+    assert res.status == "failed" and res.error.code == "not_approved"
+    assert "step_start" not in (run_dir / "log.jsonl").read_text()  # refused before touching the UI
+
+
+def test_unexpected_native_dialog_is_cancelled_and_stops_the_run(replay):
+    res, run_dir = replay(faults="confirm=1")
+    assert res.status == "failed" and res.error.code == "unclassified_state"
+    assert "native dialog" in res.error.observed and res.error.step_id == "submit_search"
+    assert "Member Detail" not in res.error.observed  # Cancel meant the search never ran
+    assert any(p.endswith(".png") for p in res.error.evidence)

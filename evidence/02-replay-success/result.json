@@ -1,5 +1,5 @@
 {
-  "run_id": "20261016-123336-replay-b21a3c",
+  "run_id": "20261019-152832-replay-0d3ddd",
   "capability": "mockbank_core.get_savings_balance",
   "version": "1.1.0",
   "status": "success",
@@ -8,6 +8,6 @@
   },
   "recoveries": [],
   "handoffs": [],
-  "evidence_dir": "C:\\Users\\ankit\\.claude\\jobs\\3d497cd0\\tmp\\ev\\20261016-123336-replay-b21a3c",
-  "duration_ms": 796
+  "evidence_dir": "C:\\Users\\ankit\\.claude\\jobs\\3d497cd0\\tmp\\ev3\\20261019-152832-replay-0d3ddd",
+  "duration_ms": 781
 }

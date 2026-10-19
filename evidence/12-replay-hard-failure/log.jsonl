@@ -1,0 +1,53 @@
+{"t": "2026-10-19T19:29:00.151+00:00", "event": "run_start", "capability": "mockbank_core.get_savings_balance", "version": "1.1.0", "artifact_status": "approved", "inputs": {"member_id": "***45"}}
+{"t": "2026-10-19T19:29:00.168+00:00", "event": "step_start", "step_id": "fill_user_id", "action": "fill", "intent": "Fill in the user ID"}
+{"t": "2026-10-19T19:29:00.203+00:00", "event": "step_ok", "step_id": "fill_user_id", "ms": 30}
+{"t": "2026-10-19T19:29:00.203+00:00", "event": "step_start", "step_id": "fill_password", "action": "fill", "intent": "Fill in the password"}
+{"t": "2026-10-19T19:29:00.214+00:00", "event": "step_ok", "step_id": "fill_password", "ms": 16}
+{"t": "2026-10-19T19:29:00.215+00:00", "event": "step_start", "step_id": "click_sign_on", "action": "click", "intent": "Click the Sign On button to log in"}
+{"t": "2026-10-19T19:29:00.440+00:00", "event": "step_ok", "step_id": "click_sign_on", "ms": 219}
+{"t": "2026-10-19T19:29:00.442+00:00", "event": "step_start", "step_id": "click_member_inquiry", "action": "click", "intent": "Navigate to the Member Inquiry screen to look up a member."}
+{"t": "2026-10-19T19:29:00.681+00:00", "event": "step_ok", "step_id": "click_member_inquiry", "ms": 233}
+{"t": "2026-10-19T19:29:00.682+00:00", "event": "step_start", "step_id": "fill_member", "action": "fill", "intent": "Fill in the member ID to search for the member."}
+{"t": "2026-10-19T19:29:00.710+00:00", "event": "step_ok", "step_id": "fill_member", "ms": 14}
+{"t": "2026-10-19T19:29:00.711+00:00", "event": "step_start", "step_id": "click_go", "action": "click", "intent": "Click Go to search for the member."}
+{"t": "2026-10-19T19:29:00.939+00:00", "event": "state_detected", "code": "server_error", "kind": "recoverable", "step_id": "click_go"}
+{"t": "2026-10-19T19:29:00.939+00:00", "event": "recovery", "code": "server_error", "action": "restart", "step_id": "click_go"}
+{"t": "2026-10-19T19:29:00.950+00:00", "event": "step_start", "step_id": "fill_user_id", "action": "fill", "intent": "Fill in the user ID"}
+{"t": "2026-10-19T19:29:00.969+00:00", "event": "step_ok", "step_id": "fill_user_id", "ms": 16}
+{"t": "2026-10-19T19:29:00.969+00:00", "event": "step_start", "step_id": "fill_password", "action": "fill", "intent": "Fill in the password"}
+{"t": "2026-10-19T19:29:00.978+00:00", "event": "step_ok", "step_id": "fill_password", "ms": 0}
+{"t": "2026-10-19T19:29:00.978+00:00", "event": "step_start", "step_id": "click_sign_on", "action": "click", "intent": "Click the Sign On button to log in"}
+{"t": "2026-10-19T19:29:01.202+00:00", "event": "step_ok", "step_id": "click_sign_on", "ms": 233}
+{"t": "2026-10-19T19:29:01.203+00:00", "event": "step_start", "step_id": "click_member_inquiry", "action": "click", "intent": "Navigate to the Member Inquiry screen to look up a member."}
+{"t": "2026-10-19T19:29:01.445+00:00", "event": "step_ok", "step_id": "click_member_inquiry", "ms": 235}
+{"t": "2026-10-19T19:29:01.445+00:00", "event": "step_start", "step_id": "fill_member", "action": "fill", "intent": "Fill in the member ID to search for the member."}
+{"t": "2026-10-19T19:29:01.471+00:00", "event": "step_ok", "step_id": "fill_member", "ms": 30}
+{"t": "2026-10-19T19:29:01.472+00:00", "event": "step_start", "step_id": "click_go", "action": "click", "intent": "Click Go to search for the member."}
+{"t": "2026-10-19T19:29:01.688+00:00", "event": "state_detected", "code": "server_error", "kind": "recoverable", "step_id": "click_go"}
+{"t": "2026-10-19T19:29:01.688+00:00", "event": "recovery", "code": "server_error", "action": "restart", "step_id": "click_go"}
+{"t": "2026-10-19T19:29:01.699+00:00", "event": "step_start", "step_id": "fill_user_id", "action": "fill", "intent": "Fill in the user ID"}
+{"t": "2026-10-19T19:29:01.718+00:00", "event": "step_ok", "step_id": "fill_user_id", "ms": 16}
+{"t": "2026-10-19T19:29:01.719+00:00", "event": "step_start", "step_id": "fill_password", "action": "fill", "intent": "Fill in the password"}
+{"t": "2026-10-19T19:29:01.729+00:00", "event": "step_ok", "step_id": "fill_password", "ms": 16}
+{"t": "2026-10-19T19:29:01.729+00:00", "event": "step_start", "step_id": "click_sign_on", "action": "click", "intent": "Click the Sign On button to log in"}
+{"t": "2026-10-19T19:29:01.953+00:00", "event": "step_ok", "step_id": "click_sign_on", "ms": 217}
+{"t": "2026-10-19T19:29:01.953+00:00", "event": "step_start", "step_id": "click_member_inquiry", "action": "click", "intent": "Navigate to the Member Inquiry screen to look up a member."}
+{"t": "2026-10-19T19:29:02.196+00:00", "event": "step_ok", "step_id": "click_member_inquiry", "ms": 235}
+{"t": "2026-10-19T19:29:02.196+00:00", "event": "step_start", "step_id": "fill_member", "action": "fill", "intent": "Fill in the member ID to search for the member."}
+{"t": "2026-10-19T19:29:02.223+00:00", "event": "step_ok", "step_id": "fill_member", "ms": 30}
+{"t": "2026-10-19T19:29:02.223+00:00", "event": "step_start", "step_id": "click_go", "action": "click", "intent": "Click Go to search for the member."}
+{"t": "2026-10-19T19:29:02.436+00:00", "event": "state_detected", "code": "server_error", "kind": "recoverable", "step_id": "click_go"}
+{"t": "2026-10-19T19:29:02.436+00:00", "event": "recovery", "code": "server_error", "action": "restart", "step_id": "click_go"}
+{"t": "2026-10-19T19:29:02.447+00:00", "event": "step_start", "step_id": "fill_user_id", "action": "fill", "intent": "Fill in the user ID"}
+{"t": "2026-10-19T19:29:02.465+00:00", "event": "step_ok", "step_id": "fill_user_id", "ms": 30}
+{"t": "2026-10-19T19:29:02.465+00:00", "event": "step_start", "step_id": "fill_password", "action": "fill", "intent": "Fill in the password"}
+{"t": "2026-10-19T19:29:02.474+00:00", "event": "step_ok", "step_id": "fill_password", "ms": 0}
+{"t": "2026-10-19T19:29:02.474+00:00", "event": "step_start", "step_id": "click_sign_on", "action": "click", "intent": "Click the Sign On button to log in"}
+{"t": "2026-10-19T19:29:02.703+00:00", "event": "step_ok", "step_id": "click_sign_on", "ms": 233}
+{"t": "2026-10-19T19:29:02.704+00:00", "event": "step_start", "step_id": "click_member_inquiry", "action": "click", "intent": "Navigate to the Member Inquiry screen to look up a member."}
+{"t": "2026-10-19T19:29:02.951+00:00", "event": "step_ok", "step_id": "click_member_inquiry", "ms": 250}
+{"t": "2026-10-19T19:29:02.951+00:00", "event": "step_start", "step_id": "fill_member", "action": "fill", "intent": "Fill in the member ID to search for the member."}
+{"t": "2026-10-19T19:29:02.977+00:00", "event": "step_ok", "step_id": "fill_member", "ms": 16}
+{"t": "2026-10-19T19:29:02.977+00:00", "event": "step_start", "step_id": "click_go", "action": "click", "intent": "Click Go to search for the member."}
+{"t": "2026-10-19T19:29:03.206+00:00", "event": "state_detected", "code": "server_error", "kind": "recoverable", "step_id": "click_go"}
+{"t": "2026-10-19T19:29:03.244+00:00", "event": "run_end", "result": {"run_id": "20261019-152900-replay-a11191", "capability": "mockbank_core.get_savings_balance", "version": "1.1.0", "status": "failed", "outputs": {}, "error": {"code": "recovery_exhausted", "step_id": "click_go", "expected": "at most 3 recoveries", "observed": "server_error still present: Transient application error; retry the flow from the start.", "evidence": ["00-recovery_exhausted.png", "00-recovery_exhausted.txt"]}, "recoveries": [{"code": "server_error", "action": "restart", "step_id": "click_go"}, {"code": "server_error", "action": "restart", "step_id": "click_go"}, {"code": "server_error", "action": "restart", "step_id": "click_go"}], "handoffs": [], "evidence_dir": "C:\\Users\\ankit\\.claude\\jobs\\3d497cd0\\tmp\\ev3\\20261019-152900-replay-a11191", "duration_ms": 3092}}

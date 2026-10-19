@@ -11,7 +11,7 @@ Data-driven exceptional states:
     13579        -> supervisor override required   (needs a human)
 
 Injectable faults (counts, consumed as they fire), e.g.
-    GET /__faults?interstitial=1&slow=1&slow_ms=3000&error500=1&expire=1   (&reset=1 zeroes all)
+    GET /__faults?interstitial=1&slow=1&slow_ms=3000&error500=1&expire=1&confirm=1   (&reset=1 zeroes all)
 """
 
 import argparse
@@ -46,7 +46,7 @@ MEMBERS = {
 }
 
 SESSIONS: dict[str, dict] = {}
-FAULTS = {"interstitial": 0, "slow": 0, "slow_ms": 3000, "error500": 0, "expire": 0}
+FAULTS = {"interstitial": 0, "slow": 0, "slow_ms": 3000, "error500": 0, "expire": 0, "confirm": 0}
 LOCK = threading.Lock()
 
 
@@ -167,6 +167,9 @@ class Handler(BaseHTTPRequestHandler):
             body = inquiry_form()
             if take("interstitial"):
                 body = body.replace("<hr>", INTERSTITIAL + "<hr>", 1)
+            if take("confirm"):  # a native confirm() the recorded flow never saw
+                body = body.replace('action="/mbr"', 'action="/mbr" onsubmit="return confirm('
+                                    "'This member record is open at another teller station. Continue?')\"", 1)
             return self.send(200, body)
         if path == "/mbr":
             self.maybe_slow()
@@ -209,7 +212,7 @@ class Handler(BaseHTTPRequestHandler):
     def faults(self, f: dict) -> None:
         with LOCK:
             if f.pop("reset", None):
-                FAULTS.update(interstitial=0, slow=0, error500=0, expire=0)
+                FAULTS.update(interstitial=0, slow=0, error500=0, expire=0, confirm=0)
             for k, v in f.items():
                 if k in FAULTS:
                     FAULTS[k] = int(v)

@@ -45,16 +45,16 @@ Pydantic models with `extra="forbid"`; `cua schema` emits the JSON Schema. An ab
                  { "by": "table_cell", "row": "Share Savings", "column": "Balance" },
                  { "by": "css", "selector": "body > font:nth-of-type(1) > table:nth-of-type(3) > …" } ] } } },
   "steps": [ …
-    { "id": "fill_in_the_member_id_to_search_for_the", "action": "fill", "value": "{{inputs.member_id}}",
+    { "id": "fill_member", "action": "fill", "value": "{{inputs.member_id}}",
       "target": { "frame": ["main"], "strategies": [
         { "by": "text_anchor", "anchor": "Member #", "role": "textbox" }, { "by": "css", "selector": "input[name=\"f1\"]" } ] },
       "risk": "safe", "intent": "Fill in the member ID to search for the member." },
-    { "id": "click_the_go_button_to_search_for_the_me", "action": "click", …,
+    { "id": "click_go", "action": "click", …,
       "expect": { "frame": ["main"], "text": "Member Detail" } } ],
   "success":  [ { "frame": ["main"], "text": "Member Detail" } ],
   "outcomes": [ { "code": "member_not_found", "kind": "business",
                   "when": { "frame": ["main"], "text": "E404 NO MEMBER ON FILE" }, "message": "No member exists…" } ],
-  "provenance": { "recorded_by": "discovery:gemini-2.5-flash", "run_id": "20261016-123103-discover-c304b6", … } }
+  "provenance": { "recorded_by": "discovery:gemini-2.5-flash", "run_id": "20261019-152637-discover-627656", … } }
 ```
 
 Why it is shaped this way:
@@ -67,10 +67,13 @@ Why it is shaped this way:
   `css`, and no `role+name`.
 - **Templates** (`{{inputs.x}}`, `{{secrets.NAME}}`, `{{tenant.x}}`) are validated at load time, so a reference to an
   undeclared input makes the artifact invalid. Secrets appear by name only. `sensitivity` drives redaction everywhere.
-- **Stable step `id`s** exist so tenant overlays can patch a step by id.
+- **Stable step `id`s** exist so tenant overlays can patch a step by id. They come from the action and the control
+  (`click_go`), never from the model's wording, so re-recording the same flow keeps them.
 - **`draft → approved`, with business outcomes declared at review.** Discovery only ever sees the happy path. Undeclared
   states fail safe: the same `99999` replay is `unclassified_state` on the draft (evidence 03) and
-  `business_outcome / member_not_found` on the reviewed 1.1.0 (evidence 04).
+  `business_outcome / member_not_found` on the reviewed 1.1.0 (evidence 04). Unattended replay requires `approved`
+  (`not_approved`, evidence 08); drafts run only with `--allow-draft`, and discovery writes them to
+  `capabilities/drafts/`, so it can never overwrite a reviewed artifact.
 - **App-wide states live in a shared profile,** once per vendor product and major version (`mockbank-core@2`): session
   expiry, the system notice, HTTP 500, permission denied, supervisor override, rejected sign-on, and PII labels. One fix
   there repairs every capability of that product.
@@ -92,13 +95,14 @@ are no fixed sleeps.
 
 | kind | response | result |
 |---|---|---|
-| `business` | stop cleanly | `business_outcome {code, message}` (evidence 04, 05) |
-| `recoverable` | `click` a dismiss target, or `restart` from entry (re-signs on); budget of 3, logged in `recoveries[]` | success (07) or `failed/recovery_exhausted` (08) |
+| `business` | stop cleanly | `business_outcome {code, message}` (evidence 04, 05, 06) |
+| `recoverable` | `click` a dismiss target, or `restart` from entry (re-signs on); budget of 3, logged in `recoveries[]` | success (09, 10) or `failed/recovery_exhausted` (12) |
 | `hard` | stop | `failed {code, step_id, expected, observed, evidence}` |
-| `human_required` | intervention request; live handoff if configured | `needs_human` (09) or resume (10) |
+| `human_required` | intervention request; live handoff if configured | `needs_human` (13) or resume (14) |
 | nothing matches and the checkpoint times out | never guess forward | `failed/unclassified_state` + screenshot + redacted screen text (03) |
+| a native `alert`/`confirm` the flow never declared | answer Cancel (commits nothing), stop | `failed/unclassified_state` with the dialog text (11) |
 
-- Inputs are checked against the contract before the browser is touched (`input_invalid`, evidence 06).
+- Inputs are checked against the contract before the browser is touched (`input_invalid`, evidence 07).
 - `restart` is refused after an irreversible step, because repeating the flow would repeat the side effect.
 
 Limits: detectors match on text. That suits slow-changing legacy screens but is sensitive to locale and branding, which
@@ -142,7 +146,8 @@ artifact, so the LLM handles only the difference.
 **Detecting "stuck":**
 
 - **In discovery:** the agent's `ask_human` tool, a policy-irreversible target (blocked *before* the click), no progress
-  (the screen is unchanged after 3 consecutive clicks), or the 25-step budget running out.
+  (the screen is unchanged after 3 consecutive clicks), the 25-step budget, or the wall-clock timeout (600 s, not
+  counting time a human holds the session).
 - **In replay:** a `human_required` detector (the supervisor override), or an irreversible step without an approved
   artifact and an explicit confirmation.
 
@@ -159,14 +164,15 @@ AUTOMATION → AWAITING_HUMAN → HUMAN → AUTOMATION | COMPLETED_BY_HUMAN | AB
 - It is **enforced, not advisory**: `Surface.perform` raises unless the lease reads `AUTOMATION`.
 - Automation never takes the session back: the timeout applies only *before* a claim.
 
-**Taking the live session.** With `--handoff-wait`, replay keeps its headed browser open (same session, same cookies)
-while it waits on the lease, and the human works in that exact window. The operator UI is mocked as the CLI
+**Taking the live session.** With `--handoff-wait`, replay *and discovery* keep the headed browser open (same session,
+same cookies) while they wait on the lease, and the human works in that exact window. Both use one wait function
+(`handoff.await_operator`). The operator UI is mocked as the CLI
 (`cua operator list|claim|release|abort`) plus the window itself. In production the same lease would sit behind a
 console that streams the remote browser (CDP screencast or VNC), with operator authentication.
 
 **Recording the human.** A listener in every frame reports clicks and field changes by role and name. Password values
 never leave the page, and other values go through the run's redactor. Actions are stored in `result.handoffs[].actions`
-next to the lease history (evidence 10: `Override Code = [SECRET]`, then a click on `Authorize`).
+next to the lease history (evidence 14: `Override Code = [SECRET]`, then a click on `Authorize`).
 
 **Handing back:**
 - **`release`:** automation **re-classifies the screen** (detectors, then the step checkpoint). If the problem is still
@@ -175,6 +181,10 @@ next to the lease history (evidence 10: `Override Code = [SECRET]`, then a click
 - **`abort`:** `failed/aborted`.
 - **Irreversible steps are performed by the human.** Automation only verifies the checkpoint; a release is never treated
   as approval to click.
+- **In discovery,** a release returns the human's actions to the model as context, and the model continues from the
+  current screen. Those actions are *not* recorded as steps. If the flow needs them every time, the save rule's
+  validation replay fails and the capability is not saved. That is correct: it needs a `human_required` outcome
+  declared at review. A test covers this.
 
 ## Safety
 
@@ -182,7 +192,8 @@ next to the lease history (evidence 10: `Override Code = [SECRET]`, then a click
   and at the network layer: a Playwright route aborts any off-list request from any frame before it leaves the browser
   (`policy_violation`).
 - **Risk:** policy classifies a step as irreversible from its target labels (close account, transfer, post, approve,
-  authorize…). The effective risk is the *stricter* of the artifact's declaration and the policy's inference, so an
+  authorize…). Only committing actions count; typing into a field labelled "Transfer Amount" is safe, and the click
+  that submits it is not. The effective risk is the *stricter* of the artifact's declaration and the policy's inference, so an
   artifact cannot declare its way out.
   - **In discovery,** irreversible actions are blocked and escalated: the LLM is the least trusted actor, and in banking
     these actions have no undo.
@@ -194,13 +205,15 @@ next to the lease history (evidence 10: `Override Code = [SECRET]`, then a click
     cell, so labels are all it needs; the discovery log in evidence 01 shows `[PII:Name]` and `[AMOUNT]`.
   - It sees the inputs it has to type; those are masked in everything persisted.
   - Outputs reach the caller in full only on stdout.
-- **Screenshots** are taken only on failure or handoff.
+- **Screenshots** are taken only on failure or handoff, and are **masked at capture**: every input value, cells matching
+  the redactor's patterns or holding a known sensitive value, and cells next to PII labels are blacked out.
 
 **Limits:**
 - **Gemini's free tier may use prompts for training.** That is acceptable here only because the data is synthetic.
   Production needs a no-retention enterprise endpoint or a self-hosted model.
-- **Screenshots are not pixel-redacted.**
-- **Unlabelled free-text PII** (a name inside a note) reaches the model and the logs.
+- **Unlabelled free-text PII** (a name inside a note) reaches the model, the logs and the screenshots.
+- **Native `confirm()` dialogs are always answered Cancel,** even while a human holds the session. Accepting one needs
+  a real operator console.
 - **Label-based risk misses icon-only buttons;** those must be declared at review.
 - **Lease security is weak:** the file has no authentication, operator identity is the OS user, and notes are stored raw.
   Secrets come from environment variables, not a vault.
@@ -209,18 +222,15 @@ next to the lease history (evidence 10: `Override Code = [SECRET]`, then a click
 
 Deliberately left out, in the order I'd build them next:
 
-1. **Discovery handoff on the live session.** Discovery routes a request but doesn't hold the session. Next: resume the
-   LLM loop with the human's captured actions as context, and record them as steps.
-2. **Tenant overlays,** demonstrated on a second variant of the mock app.
-3. **A real operator console:** a streamed browser with claim and release buttons, authentication, and a DB-backed lease
-   (the file lease has a small read-then-replace race, marked `ponytail:` in the code).
+1. **Tenant overlays,** demonstrated on a second variant of the mock app.
+2. **A real operator console:** a streamed browser with claim and release buttons, authentication, accepting native
+   dialogs, and a DB-backed lease (the file lease has a small read-then-replace race, marked `ponytail:` in the code).
+3. **Recording human steps in discovery** as candidate steps for review, instead of context only.
 4. **Bounded LLM fallback for one failed step,** policy-checked and recorded as evidence. Never open-ended.
-5. **Stability scoring:** replay N times and gate `approved` on the pass rate.
+5. **Stability scoring:** replay N times and gate `approved` on the pass rate, on top of today's approval gate.
 6. **A desktop surface** (UIA): the protocol exists; no implementation.
 7. **Smaller gaps:**
-   - pixel redaction of screenshots;
    - screenshot perception for visual-only state;
-   - native JS dialogs: Playwright dismisses them automatically, so a `confirm()` resolves to cancel (safe), but they
-     aren't classified;
+   - detectors for known native dialogs (today every native dialog stops the run);
    - anonymous iframes: locators require named frames;
-   - review tooling: review today is editing the JSON and bumping the version.
+   - review tooling: review today is editing the JSON, bumping the version and moving it out of `drafts/`.

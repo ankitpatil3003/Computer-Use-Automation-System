@@ -53,7 +53,7 @@ def replay(surface, base, tmp_path, monkeypatch, member_id, human=None, cap=CAP,
     """Run a replay; `human(page)` is performed once, as the operator, after claiming the lease."""
     urllib.request.urlopen(f"{base}/__faults?reset=1").read()
     r = Replayer(cap, PROFILE, POLICY, surface, secrets=SECRETS, tenant={"base_url": base},
-                 runs_dir=tmp_path, handoff_wait_s=wait_s)
+                 runs_dir=tmp_path, handoff_wait_s=wait_s, allow_draft=True)
     real_idle, done = surface.idle, []
 
     def idle(ms):

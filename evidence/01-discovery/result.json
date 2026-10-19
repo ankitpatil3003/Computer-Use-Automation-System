@@ -1,18 +1,19 @@
 {
-  "run_id": "20261016-123103-discover-c304b6",
+  "run_id": "20261019-152637-discover-627656",
   "status": "success",
   "goal": "Look up the member and read their savings balance",
   "steps_recorded": 6,
   "llm": {
     "calls": 8,
-    "prompt_tokens": 9829,
-    "completion_tokens": 298
+    "prompt_tokens": 9900,
+    "completion_tokens": 304
   },
-  "duration_s": 102.1,
+  "handoffs": [],
+  "duration_s": 100.9,
   "capability": "mockbank_core.get_savings_balance",
-  "artifact": "runs\\20261016-123103-discover-c304b6\\artifact.draft.json",
+  "artifact": "runs\\20261019-152637-discover-627656\\artifact.draft.json",
   "validation": {
-    "run_id": "20261016-123244-replay-1fdc3b",
+    "run_id": "20261019-152817-replay-8eef23",
     "status": "success",
     "outputs_match": true,
     "error": null

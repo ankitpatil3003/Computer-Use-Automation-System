@@ -77,11 +77,11 @@ def surface():
         yield s
 
 
-def discover(surface, base, tmp_path, member_id="12345", faults="", detour=None):
+def discover(surface, base, tmp_path, member_id="12345", faults="", detour=None, **kw):
     urllib.request.urlopen(f"{base}/__faults?reset=1&{faults}").read()
     d = Discovery("Look up the member and read their savings balance", base + "/", {"member_id": member_id},
                   client=ScriptedLLM(member_id, detour), model="scripted", policy=POLICY, profile=PROFILE,
-                  surface=surface, secrets=SECRETS, base_url=base, runs_dir=tmp_path, max_steps=15)
+                  surface=surface, secrets=SECRETS, base_url=base, runs_dir=tmp_path, max_steps=15, **kw)
     return d.run(), d
 
 
@@ -92,6 +92,9 @@ def test_discovery_records_a_replayable_capability(surface, base, tmp_path):
     cap = Capability.load(summary["artifact"])
     assert cap.entry == "{{tenant.base_url}}/" and cap.status == "draft"
     assert [s.action for s in cap.steps] == ["fill", "fill", "click", "click", "fill", "click"]  # notice not recorded
+    # ids come from action + control, not the model's wording, so a re-recording keeps them
+    assert [s.id for s in cap.steps] == ["fill_user_id", "fill_password", "click_sign_on",
+                                         "click_member_inquiry", "fill_member", "click_go"]
     assert cap.steps[0].value == "{{secrets.MOCKBANK_USER}}"
     assert cap.steps[4].value == "{{inputs.member_id}}"
     assert cap.inputs["member_id"].pattern == r"^\d{5}$"
@@ -113,3 +116,35 @@ def test_irreversible_action_escalates(surface, base, tmp_path):
 def test_agent_asks_for_help(surface, base, tmp_path):
     summary, _ = discover(surface, base, tmp_path, member_id="13579")
     assert summary["status"] == "needs_human" and "supervisor" in summary["reason"]
+
+
+def test_operator_unblocks_discovery_on_the_live_session(surface, base, tmp_path, monkeypatch):
+    """The model asks for help at the override screen; a human authorizes in the same session and
+    hands back; the model carries on. The human's steps are not recorded, so the save rule's
+    validation replay hits the override again and the capability is (correctly) not saved."""
+    real_idle, done = surface.idle, []
+
+    def idle(ms):
+        lease = surface.lease
+        if not done and lease.state == "AWAITING_HUMAN":
+            done.append(1)
+            lease.transition("HUMAN", "human:supervisor1")
+            main = surface.page.frame(name="main")
+            main.fill("input[name=f2]", server.OVERRIDE_CODE)
+            main.click("input[value=Authorize]")
+            real_idle(300)
+            lease.transition("AUTOMATION", "human:supervisor1")
+        real_idle(ms)
+
+    monkeypatch.setattr(surface, "idle", idle)
+    summary, d = discover(surface, base, tmp_path, member_id="13579", handoff_wait_s=30)
+    [h] = summary["handoffs"]
+    assert h["resolution"] == "AUTOMATION" and any(a["name"] == "Authorize" for a in h["actions"])
+    assert summary["status"] == "failed" and summary["validation"]["status"] == "needs_human"
+    assert "Authorize" not in (d.dir / "artifact.draft.json").read_text()  # human steps never recorded
+    assert server.OVERRIDE_CODE not in (d.dir / "log.jsonl").read_text()
+
+
+def test_discovery_wall_clock_timeout(surface, base, tmp_path):
+    summary, _ = discover(surface, base, tmp_path, timeout_s=0)
+    assert summary["status"] == "needs_human" and summary["reason"].startswith("timeout")

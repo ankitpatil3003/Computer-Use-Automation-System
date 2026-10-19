@@ -45,7 +45,7 @@ def cmd_replay(args: argparse.Namespace) -> int:
         result = Replayer(cap, load_profile(cap.app.profile), policy, surface, secrets=os.environ,
                           tenant={"base_url": args.base_url.rstrip("/")}, runs_dir=args.runs,
                           confirm_irreversible=args.confirm_irreversible,
-                          handoff_wait_s=args.handoff_wait).run(inputs)
+                          handoff_wait_s=args.handoff_wait, allow_draft=args.allow_draft).run(inputs)
     # stdout is the caller channel: outputs are returned in full here; persisted copies are redacted.
     print(json.dumps(result.model_dump(exclude_none=True), indent=2))
     return EXIT[result.status]
@@ -64,14 +64,17 @@ def cmd_discover(args: argparse.Namespace) -> int:
     base_url = args.base_url.rstrip("/")
     secrets = {n: os.environ[n] for n in args.secrets.split(",") if os.environ.get(n)}
     inputs = dict(kv.split("=", 1) for kv in args.input)
+    if args.handoff_wait and not args.headed:
+        sys.exit("--handoff-wait needs --headed: the operator works in the visible browser window")
     with PlaywrightSurface(headless=not args.headed, allow_url=policy.allows_url) as surface:
         summary = Discovery(args.goal, base_url + "/", inputs, client=client, model=model, policy=policy,
                             profile=load_profile(args.profile), surface=surface, secrets=secrets,
                             base_url=base_url, runs_dir=args.runs, max_steps=args.max_steps,
-                            min_interval_s=float(os.environ.get("LLM_MIN_INTERVAL_S", "13"))).run()
+                            min_interval_s=float(os.environ.get("LLM_MIN_INTERVAL_S", "13")),
+                            timeout_s=args.timeout, handoff_wait_s=args.handoff_wait).run()
     if summary["status"] == "success":
         cap = Capability.load(summary["artifact"])
-        Path(args.out).mkdir(exist_ok=True)
+        Path(args.out).mkdir(parents=True, exist_ok=True)
         cap.save(Path(args.out) / f"{cap.id}.json")
         summary["saved_to"] = str(Path(args.out) / f"{cap.id}.json")
     print(json.dumps(summary, indent=2))
@@ -118,9 +121,14 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--profile", default="mockbank-core@2")
     d.add_argument("--secrets", default="MOCKBANK_USER,MOCKBANK_PASSWORD", help="secret names the agent may use")
     d.add_argument("--policy", default="policy.json")
-    d.add_argument("--out", default="capabilities")
+    d.add_argument("--out", default="capabilities/drafts",
+                   help="where the validated draft is saved; approval (review) promotes it to capabilities/")
     d.add_argument("--runs", default="runs")
     d.add_argument("--max-steps", type=int, default=25)
+    d.add_argument("--timeout", type=float, default=600, metavar="SECONDS",
+                   help="wall-clock budget, excluding time a human holds the session")
+    d.add_argument("--handoff-wait", type=float, default=0, metavar="SECONDS",
+                   help="on escalation, hold the live session this long for an operator (needs --headed)")
     d.add_argument("--headed", action="store_true")
     d.set_defaults(fn=cmd_discover)
     r = sub.add_parser("replay", help="replay a capability deterministically (no LLM)")
@@ -131,6 +139,7 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--runs", default="runs")
     r.add_argument("--headed", action="store_true")
     r.add_argument("--confirm-irreversible", action="store_true")
+    r.add_argument("--allow-draft", action="store_true", help="run a draft capability (testing; production needs approved)")
     r.add_argument("--handoff-wait", type=float, default=0, metavar="SECONDS",
                    help="on needs-human, hold the live session this long for an operator to claim it")
     r.set_defaults(fn=cmd_replay)

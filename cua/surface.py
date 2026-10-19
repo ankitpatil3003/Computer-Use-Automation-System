@@ -15,6 +15,7 @@ from typing import Callable, Protocol
 from playwright.sync_api import Error as PWError, Frame, Locator as PWLocator, sync_playwright
 
 from cua.handoff import ControlError, Lease
+from cua.policy import PII_PATTERNS
 from cua.schema import Check, CssStrategy, Locator, RoleStrategy, Strategy, TableCellStrategy, TextAnchorStrategy
 
 
@@ -28,6 +29,7 @@ class Surface(Protocol):
     url: str
     lease: Lease | None  # who may act; perform() refuses unless it says AUTOMATION
     human_events: list[dict]  # actions captured while a human holds the lease
+    dialogs: list[str]  # native alert/confirm/prompt dialogs seen (and answered Cancel) since last checked
 
     def idle(self, ms: int) -> None: ...
 
@@ -40,7 +42,7 @@ class Surface(Protocol):
     def holds(self, check: Check) -> bool: ...
     def wait_for(self, check: Check, timeout_ms: int) -> bool: ...
     def read(self, target: Locator, timeout_ms: int) -> str: ...
-    def screenshot(self, path: str | Path) -> None: ...
+    def screenshot(self, path: str | Path, pii_labels: list[str] = (), values: list[str] = ()) -> None: ...
 
 
 # Approximate role/name in the page. Only used to *propose* strategies at record time; every
@@ -170,6 +172,8 @@ class PlaywrightSurface:
         self.blocked: list[str] = []
         self.lease: Lease | None = None
         self.human_events: list[dict] = []
+        self.dialogs: list[str] = []
+        self.page.on("dialog", self._on_dialog)
         self.page.context.expose_binding("__cuaHuman", self._on_human)
         self.page.context.add_init_script(_CAPTURE_JS)
         if allow_url:
@@ -210,6 +214,13 @@ class PlaywrightSurface:
         if self.lease is not None and self.lease.state == "HUMAN":
             path = _frame_path(source["frame"])
             self.human_events.append({"t": time.strftime("%H:%M:%S"), "frame": "/".join(path) if path else "top", **ev})
+
+    def _on_dialog(self, dialog) -> None:
+        # Without a handler Playwright silently dismisses native dialogs and the run carries on as if
+        # nothing happened. Answer Cancel (never commits anything) and record it; the caller decides.
+        # ponytail: always Cancel, even while a human holds the session; accepting a confirm needs a console
+        self.dialogs.append(f"{dialog.type}: {dialog.message}")
+        dialog.dismiss()
 
     def idle(self, ms: int) -> None:
         """Wait while still servicing the browser (human-action callbacks run during this)."""
@@ -392,5 +403,15 @@ class PlaywrightSurface:
         loc, _ = self.resolve(target, timeout_ms)
         return loc.inner_text().strip()
 
-    def screenshot(self, path: str | Path) -> None:
-        self.page.screenshot(path=str(path), full_page=True)
+    def screenshot(self, path: str | Path, pii_labels: list[str] = (), values: list[str] = ()) -> None:
+        """Full-page screenshot with sensitive regions blacked out at capture time: every input
+        value, leaf cells matching the redactor's PII patterns or holding a known sensitive value
+        (inputs, outputs, secrets), and cells next to PII labels."""
+        masks = []
+        for f in self.page.frames:
+            masks.append(f.locator("input:not([type=hidden]):not([type=submit]):not([type=button])"))
+            leaf = f.locator(f"xpath=//{_CELL}[not(.//{_CELL})]")
+            masks += [leaf.filter(has_text=p) for p in [*PII_PATTERNS, *values]]
+            masks += [f.locator(f"xpath=//tr[{_CELL}[1][normalize-space(.)={_xq(label)}]]/{_CELL}[2]")
+                      for label in pii_labels]
+        self.page.screenshot(path=str(path), full_page=True, mask=masks, mask_color="#000")
